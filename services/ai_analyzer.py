@@ -12,7 +12,10 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT_TEMPLATE = """You are an intelligent assistant responsible for analyzing user messages and extracting structured information.
 
 Your task is to extract the following information from user messages:
-1. language - The language of the user's message ("zh" for Chinese, "en" for English, or other language codes)
+1. language - IMPORTANT: Detect the language of the user's message. Return "en" for English, "zh" for Chinese.
+   - If the message is in English (e.g., "please give me", "I need", "help me"), return "en"
+   - If the message is in Chinese (e.g., "请给我", "我需要", "帮我"), return "zh"
+   - Default to "en" if uncertain
 2. urls - List of URLs the user wants to access (MUST be complete URLs starting with https://)
 3. wants_proxy - Whether the user needs a proxy/QURL link
 4. expires_in - The validity period specified by the user (format like "1h", "24h", "7d", "1w")
@@ -56,7 +59,12 @@ Validity period recognition:
 - "7天" / "一周" / "7 days" / "1 week" → "7d"
 - If not specified, return null
 
-Always return results in JSON format without any other text."""
+IMPORTANT: Always return results in JSON format without any other text.
+
+Examples:
+- Input: "please give me the QURL of Amazon" → {{"language": "en", "urls": ["https://amazon.com"], "wants_proxy": true, "expires_in": null, "reason": null}}
+- Input: "帮我生成谷歌的代理链接" → {{"language": "zh", "urls": ["https://google.com"], "wants_proxy": true, "expires_in": null, "reason": null}}
+- Input: "CRM proxy please, 7 days" → {{"language": "en", "urls": ["https://crm.mycompany.com"], "wants_proxy": true, "expires_in": "7d", "reason": null}}"""
 
 
 @dataclass
