@@ -1,0 +1,10 @@
+{
+  "CRM": "https://crm.mycompany.com",
+  "ERP": "https://erp.mycompany.com",
+  "HR": "https://hr.mycompany.com",
+  "OA": "https://oa.mycompany.com",
+  "Wiki": "https://wiki.mycompany.com",
+  "Jira": "https://jira.mycompany.com",
+  "Confluence": "https://confluence.mycompany.com",
+  "GitLab": "https://gitlab.mycompany.com"
+}
