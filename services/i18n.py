@@ -56,6 +56,31 @@ MESSAGES = {
 }
 
 
+def normalize_language(lang: str) -> str:
+    """
+    Normalize language code to 'zh' or 'en'.
+
+    Args:
+        lang: Raw language code from AI
+
+    Returns:
+        Normalized language code ('zh' or 'en')
+    """
+    if not lang:
+        return "en"
+
+    lang_lower = lang.lower()
+
+    # Check for Chinese
+    chinese_indicators = ["zh", "chinese", "中文", "cn", "mandarin"]
+    for indicator in chinese_indicators:
+        if indicator in lang_lower:
+            return "zh"
+
+    # Default to English for everything else
+    return "en"
+
+
 def get_message(key: str, lang: str = "en", **kwargs) -> str:
     """
     Get a localized message.
@@ -68,9 +93,8 @@ def get_message(key: str, lang: str = "en", **kwargs) -> str:
     Returns:
         Localized and formatted message
     """
-    # Default to English if language not supported
-    if lang not in MESSAGES:
-        lang = "en"
+    # Normalize language code
+    lang = normalize_language(lang)
 
     messages = MESSAGES[lang]
     message = messages.get(key, MESSAGES["en"].get(key, key))
@@ -86,4 +110,4 @@ def get_message(key: str, lang: str = "en", **kwargs) -> str:
 
 def is_chinese(lang: str) -> bool:
     """Check if the language is Chinese."""
-    return lang.lower().startswith("zh")
+    return normalize_language(lang) == "zh"
