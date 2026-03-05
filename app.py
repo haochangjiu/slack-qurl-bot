@@ -58,14 +58,9 @@ async def handle_setkey(ack, command, say):
         return
 
     try:
-        # Verify the API key
-        is_valid = await layerv_client.verify_api_key(api_key)
-
-        if is_valid:
-            user_store.set_api_key(user_id, api_key)
-            await say(get_message("setkey_success", lang))
-        else:
-            await say(get_message("setkey_invalid", lang))
+        # Save API key directly without verification
+        user_store.set_api_key(user_id, api_key)
+        await say(get_message("setkey_success", lang))
     except Exception as e:
         logger.error(f"Error setting API key for {user_id}: {e}")
         await say(get_message("setkey_error", lang, error=str(e)))
