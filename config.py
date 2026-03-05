@@ -11,10 +11,12 @@ class Settings(BaseSettings):
 
     # LayerV API
     layerv_api_url: str = "https://api.layerv.xyz"
-    layerv_api_key: str
 
     # QURL defaults
     qurl_default_expires_in: str = "30m"
+
+    # Encryption secret for storing user API keys
+    encryption_secret: str = "slack-qurl-bot-default-secret"
 
     class Config:
         env_file = ".env"

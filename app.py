@@ -6,10 +6,11 @@ from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
 from config import settings
-from services.layerv import layerv_client
+from services.layerv import layerv_client, InvalidApiKeyError
 from services.ai_analyzer import ai_analyzer
 from services.url_parser import extract_urls, normalize_url, is_valid_url
 from services.i18n import get_message
+from services.user_store import user_store
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,6 +30,83 @@ def preprocess_slack_text(text: str) -> str:
     text = re.sub(r'<(https?://[^>]+)>', r'\1', text)
     return text
 
+
+def detect_language_from_text(text: str) -> str:
+    """Simple language detection based on character analysis."""
+    # Check for Chinese characters
+    chinese_pattern = re.compile(r'[\u4e00-\u9fff]')
+    if chinese_pattern.search(text):
+        return "zh"
+    return "en"
+
+
+# ============== Slash Commands ==============
+
+@app.command("/setkey")
+async def handle_setkey(ack, command, say):
+    """Handle /setkey command to configure API key."""
+    await ack()
+
+    user_id = command["user_id"]
+    api_key = command["text"].strip()
+
+    # Detect language from command context (default to English for commands)
+    lang = "en"
+
+    if not api_key:
+        await say(get_message("setkey_usage", lang))
+        return
+
+    try:
+        # Verify the API key
+        is_valid = await layerv_client.verify_api_key(api_key)
+
+        if is_valid:
+            user_store.set_api_key(user_id, api_key)
+            await say(get_message("setkey_success", lang))
+        else:
+            await say(get_message("setkey_invalid", lang))
+    except Exception as e:
+        logger.error(f"Error setting API key for {user_id}: {e}")
+        await say(get_message("setkey_error", lang, error=str(e)))
+
+
+@app.command("/mykey")
+async def handle_mykey(ack, command, say):
+    """Handle /mykey command to show API key status."""
+    await ack()
+
+    user_id = command["user_id"]
+    lang = "en"
+
+    key_info = user_store.get_key_info(user_id)
+
+    if key_info:
+        await say(get_message(
+            "mykey_info",
+            lang,
+            prefix=key_info["api_key_prefix"],
+            created_at=key_info["created_at"]
+        ))
+    else:
+        await say(get_message("mykey_none", lang))
+
+
+@app.command("/delkey")
+async def handle_delkey(ack, command, say):
+    """Handle /delkey command to delete API key."""
+    await ack()
+
+    user_id = command["user_id"]
+    lang = "en"
+
+    if user_store.delete_api_key(user_id):
+        await say(get_message("delkey_success", lang))
+    else:
+        await say(get_message("delkey_none", lang))
+
+
+# ============== Message Events ==============
 
 @app.event("app_mention")
 async def handle_app_mention(event, say):
@@ -74,6 +152,13 @@ async def process_message(text: str, user: str, say):
     clean_text = preprocess_slack_text(text)
     logger.info(f"Processing message from {user}: {clean_text}")
 
+    # Check if user has API key configured
+    if not user_store.has_api_key(user):
+        # Detect language from user's message
+        lang = detect_language_from_text(clean_text)
+        await say(f"<@{user}> {get_message('no_api_key', lang)}")
+        return
+
     try:
         # Use Claude AI for semantic analysis
         analysis = await ai_analyzer.analyze(clean_text)
@@ -108,6 +193,12 @@ async def process_message(text: str, user: str, say):
             )
             return
 
+        # Get user's API key
+        api_key = user_store.get_api_key(user)
+        if not api_key:
+            await say(f"<@{user}> {get_message('no_api_key', lang)}")
+            return
+
         # Generate QURL for each URL
         results = []
         errors = []
@@ -119,6 +210,7 @@ async def process_message(text: str, user: str, say):
 
             try:
                 qurl_response = await layerv_client.create_qurl(
+                    api_key=api_key,
                     target_url=url,
                     expires_in=analysis.expires_in,
                     description=analysis.reason or f"Generated via Slack bot for user {user}",
@@ -128,6 +220,10 @@ async def process_message(text: str, user: str, say):
                     "qurl_link": qurl_response.qurl_link,
                     "expires_at": qurl_response.expires_at,
                 })
+            except InvalidApiKeyError:
+                logger.error(f"Invalid API key for user {user}")
+                await say(f"<@{user}> {get_message('invalid_api_key', lang)}")
+                return
             except Exception as e:
                 logger.error(f"Failed to create QURL for {url}: {e}")
                 errors.append(get_message("failed_item", lang, url=url, error=str(e)))
