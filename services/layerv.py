@@ -100,6 +100,7 @@ class LayerVClient:
                 timeout=30.0,
             )
 
+            logger.info(f"QURL API response status: {response.status_code}")
             if response.status_code == 201:
                 data = response.json()["data"]
                 return QURLResponse(
@@ -109,8 +110,10 @@ class LayerVClient:
                     expires_at=data["expires_at"],
                 )
             elif response.status_code == 401:
+                logger.error(f"API key invalid, response: {response.text}")
                 raise InvalidApiKeyError("Invalid or expired API key")
             else:
+                logger.error(f"QURL API error: {response.status_code} - {response.text}")
                 error_data = response.json()
                 error_detail = error_data.get("error", {}).get(
                     "detail", "Unknown error"

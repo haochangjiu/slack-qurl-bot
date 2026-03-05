@@ -53,6 +53,7 @@ class UserStore:
             DATA_DIR.mkdir(parents=True, exist_ok=True)
             with open(USERS_FILE, "w", encoding="utf-8") as f:
                 json.dump(self._users, f, indent=2, ensure_ascii=False)
+            logger.info(f"Successfully saved {len(self._users)} user records to {USERS_FILE}")
         except Exception as e:
             logger.error(f"Failed to save users: {e}")
 
@@ -90,11 +91,15 @@ class UserStore:
         Returns:
             Decrypted API key or None if not found
         """
+        logger.info(f"Getting API key for user {user_id}, total users: {len(self._users)}")
         user = self._users.get(user_id)
         if not user:
+            logger.warning(f"No API key found for user {user_id}")
             return None
         try:
-            return self._decrypt(user["api_key_encrypted"])
+            api_key = self._decrypt(user["api_key_encrypted"])
+            logger.info(f"Successfully decrypted API key for user {user_id}: {api_key[:8]}...")
+            return api_key
         except Exception as e:
             logger.error(f"Failed to decrypt API key for {user_id}: {e}")
             return None
