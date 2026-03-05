@@ -45,11 +45,12 @@ URL Recognition Rules:
 - Always return URLs with https:// prefix
 
 Criteria for determining wants_proxy:
+- IMPORTANT: "QURL" IS the proxy service itself! Any request mentioning "QURL" means wants_proxy = true
 - User explicitly requests proxy, QURL, access link, secure link, etc.
 - User asks how to access a website
 - User mentions needing to bypass restrictions, VPN, etc.
 - Chinese keywords: 代理, 访问, 链接, 打开, 连接, 翻墙, 科学上网, qurl
-- English keywords: proxy, access, link, open, connect, vpn, qurl
+- English keywords: proxy, access, link, open, connect, vpn, qurl, QURL
 - If the user only sends a URL/website name without explicitly requesting a proxy, wants_proxy should be false
 
 Validity period recognition:
@@ -63,7 +64,10 @@ IMPORTANT: Always return results in JSON format without any other text.
 
 Examples:
 - Input: "please give me the QURL of Amazon" → {{"language": "en", "urls": ["https://amazon.com"], "wants_proxy": true, "expires_in": null, "reason": null}}
+- Input: "QURL for google.com" → {{"language": "en", "urls": ["https://google.com"], "wants_proxy": true, "expires_in": null, "reason": null}}
+- Input: "I need a QURL to access YouTube" → {{"language": "en", "urls": ["https://youtube.com"], "wants_proxy": true, "expires_in": null, "reason": null}}
 - Input: "帮我生成谷歌的代理链接" → {{"language": "zh", "urls": ["https://google.com"], "wants_proxy": true, "expires_in": null, "reason": null}}
+- Input: "给我一个Amazon的QURL" → {{"language": "zh", "urls": ["https://amazon.com"], "wants_proxy": true, "expires_in": null, "reason": null}}
 - Input: "CRM proxy please, 7 days" → {{"language": "en", "urls": ["https://crm.mycompany.com"], "wants_proxy": true, "expires_in": "7d", "reason": null}}"""
 
 
