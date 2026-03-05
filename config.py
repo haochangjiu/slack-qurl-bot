@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     # LayerV API
     layerv_api_url: str = "https://api.layerv.xyz"
+    layerv_api_key: str | None = None  # Optional global API key
 
     # QURL defaults
     qurl_default_expires_in: str = "30m"
