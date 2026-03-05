@@ -54,6 +54,10 @@ async def handle_direct_message(event, say):
     text = event.get("text", "")
     user = event.get("user")
 
+    # Skip if message contains bot mention (will be handled by app_mention event)
+    if re.search(r"<@[A-Z0-9]+>", text):
+        return
+
     await process_message(text, user, say)
 
 
