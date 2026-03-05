@@ -78,9 +78,15 @@ async def process_message(text: str, user: str, say):
         # Use Claude AI for semantic analysis
         analysis = await ai_analyzer.analyze(clean_text)
         lang = analysis.language
+
+        # Force wants_proxy=True if message contains "QURL" (case-insensitive)
+        wants_proxy = analysis.wants_proxy
+        if "qurl" in clean_text.lower():
+            wants_proxy = True
+
         logger.info(
             f"AI analysis result: lang={lang}, urls={analysis.urls}, "
-            f"wants_proxy={analysis.wants_proxy}, expires_in={analysis.expires_in}"
+            f"wants_proxy={wants_proxy}, expires_in={analysis.expires_in}"
         )
 
         # Also extract URLs from text as fallback (handles Slack formatting)
@@ -95,7 +101,7 @@ async def process_message(text: str, user: str, say):
             await say(f"<@{user}> {get_message('no_url_detected', lang)}")
             return
 
-        if not analysis.wants_proxy:
+        if not wants_proxy:
             # User provided URL but didn't explicitly ask for proxy
             await say(
                 f"<@{user}> {get_message('url_detected_no_proxy', lang, urls=', '.join(all_urls), example_url=all_urls[0])}"
