@@ -34,7 +34,7 @@ def extract_urls(text: str) -> list[str]:
 
 
 def normalize_url(url: str) -> str:
-    """Normalize URL to ensure it has https:// prefix and lowercase domain."""
+    """Normalize URL to ensure it has https:// prefix, www subdomain, and lowercase domain."""
     url = url.strip()
     # Convert http:// to https://
     if url.startswith("http://"):
@@ -45,7 +45,12 @@ def normalize_url(url: str) -> str:
     # Normalize domain to lowercase (domain is case-insensitive)
     parsed = urlparse(url)
     if parsed.netloc:
-        normalized = parsed._replace(netloc=parsed.netloc.lower())
+        domain = parsed.netloc.lower()
+        # Add www. prefix if domain has no subdomain (e.g., google.com -> www.google.com)
+        parts = domain.split('.')
+        if len(parts) == 2 and not domain.startswith('www.'):
+            domain = f"www.{domain}"
+        normalized = parsed._replace(netloc=domain)
         url = normalized.geturl()
     return url
 
