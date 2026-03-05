@@ -49,7 +49,7 @@ Criteria for determining wants_proxy:
 - User explicitly requests proxy, QURL, access link, secure link, etc.
 - User asks how to access a website
 - User mentions needing to bypass restrictions, VPN, etc.
-- Chinese keywords: 代理, 访问, 链接, 打开, 连接, 翻墙, 科学上网, qurl
+- Chinese keywords: 代理, 访问, 链接, 打开, 连接, 翻墙, 科学上网, qurl, QURL, 想要QURL, 要QURL
 - English keywords: proxy, access, link, open, connect, vpn, qurl, QURL
 - If the user only sends a URL/website name without explicitly requesting a proxy, wants_proxy should be false
 
