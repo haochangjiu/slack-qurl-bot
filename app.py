@@ -86,8 +86,10 @@ async def process_message(text: str, user: str, say):
         # Also extract URLs from text as fallback (handles Slack formatting)
         extracted_urls = extract_urls(text)
 
-        # Merge URLs from AI analysis and regex extraction
-        all_urls = list(set(analysis.urls + extracted_urls))
+        # Merge URLs from AI analysis and regex extraction, normalize and dedupe
+        combined_urls = analysis.urls + extracted_urls
+        normalized_urls = [normalize_url(url) for url in combined_urls]
+        all_urls = list(dict.fromkeys(normalized_urls))  # Dedupe while preserving order
 
         if not all_urls:
             await say(f"<@{user}> {get_message('no_url_detected', lang)}")
@@ -105,25 +107,24 @@ async def process_message(text: str, user: str, say):
         errors = []
 
         for url in all_urls:
-            normalized_url = normalize_url(url)
-            if not is_valid_url(normalized_url):
-                errors.append(get_message("invalid_url", lang, url=normalized_url))
+            if not is_valid_url(url):
+                errors.append(get_message("invalid_url", lang, url=url))
                 continue
 
             try:
                 qurl_response = await layerv_client.create_qurl(
-                    target_url=normalized_url,
+                    target_url=url,
                     expires_in=analysis.expires_in,
                     description=analysis.reason or f"Generated via Slack bot for user {user}",
                 )
                 results.append({
-                    "original_url": normalized_url,
+                    "original_url": url,
                     "qurl_link": qurl_response.qurl_link,
                     "expires_at": qurl_response.expires_at,
                 })
             except Exception as e:
-                logger.error(f"Failed to create QURL for {normalized_url}: {e}")
-                errors.append(get_message("failed_item", lang, url=normalized_url, error=str(e)))
+                logger.error(f"Failed to create QURL for {url}: {e}")
+                errors.append(get_message("failed_item", lang, url=url, error=str(e)))
 
         # Build response message
         response_parts = [f"<@{user}>"]
