@@ -89,6 +89,9 @@ class LayerVClient:
         if description:
             payload["description"] = description
 
+        logger.info(f"Creating QURL with api_key: {api_key[:12]}..., target_url: {target_url}")
+        logger.info(f"Payload: {payload}")
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.api_url}/v1/qurl",
@@ -100,7 +103,7 @@ class LayerVClient:
                 timeout=30.0,
             )
 
-            logger.info(f"QURL API response status: {response.status_code}")
+            logger.info(f"QURL API response status: {response.status_code}, body: {response.text[:200]}")
             if response.status_code == 201:
                 data = response.json()["data"]
                 return QURLResponse(
