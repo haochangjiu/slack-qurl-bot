@@ -57,6 +57,9 @@ async def handle_setkey(ack, command, say):
         await say(get_message("setkey_usage", lang))
         return
 
+    # Log the received API key (first 12 chars only for security)
+    logger.info(f"Received API key from {user_id}: '{api_key[:12]}...' (length: {len(api_key)})")
+
     try:
         # Save API key directly without verification
         user_store.set_api_key(user_id, api_key)
