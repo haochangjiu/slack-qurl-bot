@@ -152,10 +152,15 @@ class AIAnalyzer:
             # Post-process to catch any custom domains AI might have missed
             urls = self._resolve_custom_domains(urls, text)
 
+            wants_proxy = data.get("wants_proxy", False)
+            # Force wants_proxy=True if message contains "QURL" (case-insensitive)
+            if "qurl" in text.lower():
+                wants_proxy = True
+
             return AnalysisResult(
                 language=data.get("language", "en"),
                 urls=urls,
-                wants_proxy=data.get("wants_proxy", False),
+                wants_proxy=wants_proxy,
                 expires_in=data.get("expires_in"),
                 reason=data.get("reason"),
             )
