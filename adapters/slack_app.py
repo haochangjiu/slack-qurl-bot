@@ -93,6 +93,19 @@ async def handle_app_mention(event, say, client):
         return
     logger.info(f"Slack mention from {user}: {clean_text}")
 
+    # Handle /setkey, /mykey, /delkey when typed as @bot /command (no URL matching)
+    cmd, arg = _parse_command(clean_text)
+    if cmd:
+        if cmd == "setkey":
+            msg, _ = await handle_setkey(user, arg, PLATFORM_SLACK)
+        elif cmd == "mykey":
+            user_tz = await get_user_timezone(client, user) if client else None
+            msg, _ = await handle_mykey(user, PLATFORM_SLACK, user_tz=user_tz)
+        else:  # delkey
+            msg, _ = await handle_delkey(user, PLATFORM_SLACK)
+        await say(f"<@{user}> {msg}")
+        return
+
     user_tz = await get_user_timezone(client, user) if client else None
     reply, _ = await process_message(clean_text, user, PLATFORM_SLACK, user_tz=user_tz)
     await say(f"<@{user}> {reply}")
@@ -114,6 +127,18 @@ async def handle_direct_message(event, say, client):
         await say(f"<@{user}> {get_message('empty_input', 'en')}")
         return
     logger.info(f"Slack DM from {user}: {clean_text}")
+
+    cmd, arg = _parse_command(clean_text)
+    if cmd:
+        if cmd == "setkey":
+            msg, _ = await handle_setkey(user, arg, PLATFORM_SLACK)
+        elif cmd == "mykey":
+            user_tz = await get_user_timezone(client, user) if client else None
+            msg, _ = await handle_mykey(user, PLATFORM_SLACK, user_tz=user_tz)
+        else:
+            msg, _ = await handle_delkey(user, PLATFORM_SLACK)
+        await say(f"<@{user}> {msg}")
+        return
 
     user_tz = await get_user_timezone(client, user) if client else None
     reply, _ = await process_message(clean_text, user, PLATFORM_SLACK, user_tz=user_tz)
