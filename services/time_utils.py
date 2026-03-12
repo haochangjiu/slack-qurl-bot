@@ -68,11 +68,17 @@ async def get_user_timezone(client, user_id: str) -> str | None:
         IANA timezone string (e.g., "Asia/Shanghai") or None
     """
     if not client:
+        logger.warning(f"No Slack client available, cannot get timezone for {user_id}")
         return None
     try:
         response = await client.users_info(user=user_id)
         if response.get("ok") and response.get("user"):
-            return response["user"].get("tz")
+            tz = response["user"].get("tz")
+            tz_offset = response["user"].get("tz_offset")
+            logger.info(f"User {user_id} timezone: tz={tz}, tz_offset={tz_offset}")
+            return tz
+        else:
+            logger.warning(f"users_info response not ok for {user_id}: {response.get('error', 'unknown')}")
     except Exception as e:
         logger.warning(f"Failed to get user timezone for {user_id}: {e}")
     return None
