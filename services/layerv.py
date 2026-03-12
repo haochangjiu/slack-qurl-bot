@@ -94,7 +94,7 @@ class LayerVClient:
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{self.api_url}/v1/qurl",
+                f"{self.api_url}/v1/qurls",
                 json=payload,
                 headers={
                     "Authorization": f"Bearer {api_key}",
