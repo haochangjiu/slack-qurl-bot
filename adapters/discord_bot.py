@@ -77,7 +77,7 @@ def get_empty_msg() -> str:
 
 
 @app_commands.command(name="setkey", description="Configure your LayerV API Key")
-@app_commands.describe(api_key="Your LayerV API Key from https://layerv.ai/console")
+@app_commands.describe(api_key="Your LayerV API Key from https://layerv.ai/qurl/dashboard/keys")
 async def setkey_cmd(interaction: discord.Interaction, api_key: str):
     await interaction.response.defer(ephemeral=True)
     msg, _ = await handle_setkey(str(interaction.user.id), api_key.strip(), PLATFORM_DISCORD)

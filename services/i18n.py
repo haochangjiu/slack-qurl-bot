@@ -30,9 +30,9 @@ MESSAGES = {
         "no_api_key": (
             "⚠️ 您还未配置 API Key。\n"
             "请先私信我并使用 `/setkey <your_api_key>` 命令配置您的 LayerV API Key。\n\n"
-            "获取 API Key: https://layerv.ai/console"
+            "获取 API Key: https://layerv.ai/qurl/dashboard/keys"
         ),
-        "setkey_usage": "用法: `/setkey <your_api_key>`\n\n从 LayerV 控制台获取您的 API Key: https://layerv.ai/console",
+        "setkey_usage": "用法: `/setkey <your_api_key>`\n\n从 LayerV 控制台获取您的 API Key: https://layerv.ai/qurl/dashboard/keys",
         "setkey_success": "✅ API Key 配置成功！现在可以使用 QURL 服务了。",
         "setkey_invalid": "❌ API Key 无效，请检查后重试。",
         "setkey_error": "❌ 配置 API Key 时发生错误: {error}",
@@ -71,9 +71,9 @@ MESSAGES = {
         "no_api_key": (
             "⚠️ You haven't configured your API Key yet.\n"
             "Please DM me and use `/setkey <your_api_key>` to configure your LayerV API Key.\n\n"
-            "Get your API Key: https://layerv.ai/console"
+            "Get your API Key: https://layerv.ai/qurl/dashboard/keys"
         ),
-        "setkey_usage": "Usage: `/setkey <your_api_key>`\n\nGet your API Key from LayerV console: https://layerv.ai/console",
+        "setkey_usage": "Usage: `/setkey <your_api_key>`\n\nGet your API Key from LayerV console: https://layerv.ai/qurl/dashboard/keys",
         "setkey_success": "✅ API Key configured successfully! You can now use the QURL service.",
         "setkey_invalid": "❌ Invalid API Key. Please check and try again.",
         "setkey_error": "❌ Error configuring API Key: {error}",
