@@ -11,6 +11,7 @@ from services.ai_analyzer import ai_analyzer
 from services.url_parser import extract_urls, normalize_url, is_valid_url
 from services.i18n import get_message
 from services.user_store import user_store
+from services.time_utils import format_utc_to_local, get_user_timezone
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -70,7 +71,7 @@ async def handle_setkey(ack, command, say):
 
 
 @app.command("/mykey")
-async def handle_mykey(ack, command, say):
+async def handle_mykey(ack, command, say, client):
     """Handle /mykey command to show API key status."""
     await ack()
 
@@ -80,11 +81,16 @@ async def handle_mykey(ack, command, say):
     key_info = user_store.get_key_info(user_id)
 
     if key_info:
+        user_tz = await get_user_timezone(client, user_id) if client else None
+        created_at = format_utc_to_local(
+            key_info["created_at"],
+            user_tz=user_tz,
+        ) if key_info.get("created_at") else key_info.get("created_at", "-")
         await say(get_message(
             "mykey_info",
             lang,
             prefix=key_info["api_key_prefix"],
-            created_at=key_info["created_at"]
+            created_at=created_at
         ))
     else:
         await say(get_message("mykey_none", lang))
@@ -107,7 +113,7 @@ async def handle_delkey(ack, command, say):
 # ============== Message Events ==============
 
 @app.event("app_mention")
-async def handle_app_mention(event, say):
+async def handle_app_mention(event, say, client):
     """Handle when bot is mentioned in a channel."""
     text = event.get("text", "")
     user = event.get("user")
@@ -115,11 +121,11 @@ async def handle_app_mention(event, say):
     # Remove bot mention from text
     text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
 
-    await process_message(text, user, say)
+    await process_message(text, user, say, client)
 
 
 @app.event("message")
-async def handle_direct_message(event, say):
+async def handle_direct_message(event, say, client):
     """Handle direct messages to the bot."""
     # Only process direct messages (no subtype means it's a regular message)
     if event.get("channel_type") != "im":
@@ -134,10 +140,10 @@ async def handle_direct_message(event, say):
     if re.search(r"<@[A-Z0-9]+>", text):
         return
 
-    await process_message(text, user, say)
+    await process_message(text, user, say, client)
 
 
-async def process_message(text: str, user: str, say):
+async def process_message(text: str, user: str, say, client=None):
     """Process user message using Claude AI for semantic analysis."""
     # Default language
     lang = "en"
@@ -197,6 +203,9 @@ async def process_message(text: str, user: str, say):
             await say(f"<@{user}> {get_message('no_api_key', lang)}")
             return
 
+        # Get user's timezone for displaying expiry time in local time
+        user_tz = await get_user_timezone(client, user) if client else None
+
         # Generate QURL for each URL
         results = []
         errors = []
@@ -216,7 +225,10 @@ async def process_message(text: str, user: str, say):
                 results.append({
                     "original_url": url,
                     "qurl_link": qurl_response.qurl_link,
-                    "expires_at": qurl_response.expires_at,
+                    "expires_at": format_utc_to_local(
+                        qurl_response.expires_at,
+                        user_tz=user_tz,
+                    ),
                 })
             except InvalidApiKeyError:
                 logger.error(f"Invalid API key for user {user}")

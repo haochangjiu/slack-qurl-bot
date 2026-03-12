@@ -24,6 +24,7 @@
 - `im:history` - 读取私信历史
 - `im:read` - 读取私信
 - `im:write` - 发送私信
+- `users:read` - 读取用户信息（用于根据用户时区显示本地时间）
 
 ### 3. 启用 Socket Mode
 
@@ -102,7 +103,7 @@ google.com 请给我代理地址
 
 • 原始网址: google.com
   代理链接: https://xxx.layerv.ai/q/abc123
-  有效期至: 2024-01-08T12:00:00Z
+  有效期至: 2024-01-08 20:00:00 (CST)
 ```
 
 ## 项目结构
