@@ -117,10 +117,13 @@ class LayerVClient:
                 raise InvalidApiKeyError("Invalid or expired API key")
             else:
                 logger.error(f"QURL API error: {response.status_code} - {response.text}")
-                error_data = response.json()
-                error_detail = error_data.get("error", {}).get(
-                    "detail", "Unknown error"
-                )
+                try:
+                    error_data = response.json()
+                    error_detail = error_data.get("error", {}).get(
+                        "detail", "Unknown error"
+                    )
+                except (ValueError, KeyError):
+                    error_detail = response.text[:200] or f"HTTP {response.status_code}"
                 raise Exception(f"Failed to create QURL: {error_detail}")
 
 
