@@ -2,9 +2,12 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # Slack
-    slack_bot_token: str
-    slack_app_token: str
+    # Slack (optional - omit to run Discord-only)
+    slack_bot_token: str | None = None
+    slack_app_token: str | None = None
+
+    # Discord (optional - omit to run Slack-only)
+    discord_token: str | None = None
 
     # Claude API
     anthropic_api_key: str

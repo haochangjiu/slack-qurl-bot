@@ -38,6 +38,7 @@ class UserStore:
             try:
                 with open(USERS_FILE, "r", encoding="utf-8") as f:
                     self._users = json.load(f)
+                self._migrate_legacy_keys()
                 logger.info(f"Loaded {len(self._users)} user records")
             except Exception as e:
                 logger.error(f"Failed to load users: {e}")
@@ -46,6 +47,20 @@ class UserStore:
             self._users = {}
             # Ensure data directory exists
             DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    def _migrate_legacy_keys(self):
+        """Migrate legacy Slack keys (no prefix) to slack: prefix."""
+        migrated = {}
+        for key, value in self._users.items():
+            if ":" not in key:
+                # Legacy key from Slack - migrate to slack: prefix
+                migrated["slack:" + key] = value
+            else:
+                migrated[key] = value
+        if migrated != self._users:
+            self._users = migrated
+            self._save()
+            logger.info("Migrated legacy user keys to platform-prefixed format")
 
     def _save(self):
         """Save users to file."""

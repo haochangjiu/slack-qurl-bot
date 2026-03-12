@@ -1,6 +1,6 @@
-# Slack QURL Bot
+# QURL Bot (Slack + Discord)
 
-一个 Slack 机器人，帮助用户通过 LayerV QURL API 生成安全的代理访问链接。
+帮助用户在 Slack 或 Discord 中通过 LayerV QURL API 生成安全的代理访问链接。支持双平台同时运行。
 
 ## 功能
 
@@ -8,8 +8,17 @@
 - 识别用户意图（是否需要代理链接）
 - 调用 LayerV API 生成 QURL
 - 支持自定义过期时间
+- 支持 Slack 和 Discord 双平台
 
-## 快速开始
+## 运行方式
+
+- **仅 Slack**：`python app.py`（需配置 `SLACK_BOT_TOKEN`、`SLACK_APP_TOKEN`）
+- **仅 Discord**：`python run.py`（需配置 `DISCORD_TOKEN`）
+- **同时运行 Slack + Discord**：`python run.py`（需配置所有对应 token）
+
+---
+
+## Slack 快速开始
 
 ### 1. 创建 Slack App
 

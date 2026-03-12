@@ -82,3 +82,54 @@ async def get_user_timezone(client, user_id: str) -> str | None:
     except Exception as e:
         logger.warning(f"Failed to get user timezone for {user_id}: {e}")
     return None
+
+
+# Discord locale (e.g. "zh-CN", "en-US") to IANA timezone mapping.
+# Discord does not expose user timezone; we infer from locale.
+DISCORD_LOCALE_TO_TZ: dict[str, str] = {
+    "zh-CN": "Asia/Shanghai",
+    "zh-TW": "Asia/Taipei",
+    "zh-HK": "Asia/Hong_Kong",
+    "ja": "Asia/Tokyo",
+    "ko": "Asia/Seoul",
+    "en-US": "America/New_York",
+    "en-GB": "Europe/London",
+    "de": "Europe/Berlin",
+    "fr": "Europe/Paris",
+    "es": "Europe/Madrid",
+    "it": "Europe/Rome",
+    "pt-BR": "America/Sao_Paulo",
+    "ru": "Europe/Moscow",
+    "hi": "Asia/Kolkata",
+    "th": "Asia/Bangkok",
+    "vi": "Asia/Ho_Chi_Minh",
+    "id": "Asia/Jakarta",
+    "tr": "Europe/Istanbul",
+    "pl": "Europe/Warsaw",
+    "nl": "Europe/Amsterdam",
+    "sv": "Europe/Stockholm",
+    "da": "Europe/Copenhagen",
+    "fi": "Europe/Helsinki",
+    "no": "Europe/Oslo",
+    "cs": "Europe/Prague",
+    "hu": "Europe/Budapest",
+    "ro": "Europe/Bucharest",
+    "bg": "Europe/Sofia",
+    "uk": "Europe/Kiev",
+    "el": "Europe/Athens",
+}
+
+
+def get_timezone_from_discord_locale(locale: str | None) -> str | None:
+    """
+    Map Discord user locale to IANA timezone.
+
+    Args:
+        locale: Discord locale (e.g., "zh-CN", "en-US")
+
+    Returns:
+        IANA timezone string or None
+    """
+    if not locale:
+        return None
+    return DISCORD_LOCALE_TO_TZ.get(locale)
