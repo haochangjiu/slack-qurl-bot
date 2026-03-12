@@ -155,7 +155,13 @@ async def handle_app_home_opened(client, event):
             },
         )
     except Exception as e:
-        logger.warning(f"Failed to publish app home: {e}")
+        err_str = str(e)
+        if "not_enabled" in err_str.lower():
+            logger.debug(
+                "App Home not enabled. Enable at: https://api.slack.com/apps > Your App > App Home"
+            )
+        else:
+            logger.warning(f"Failed to publish app home: {e}")
 
 
 async def run_slack():
