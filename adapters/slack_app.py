@@ -34,6 +34,22 @@ def _preprocess_slack(text: str) -> str:
     return preprocess_text(text, PLATFORM_SLACK)
 
 
+def _parse_command(text: str) -> tuple[str | None, str]:
+    """
+    Parse /setkey, /mykey, /delkey from message text.
+    Returns (command_name, arg) e.g. ('setkey', 'xxx') or (None, '') if not a command.
+    """
+    t = text.strip()
+    if t.startswith("/setkey"):
+        arg = t[7:].strip()
+        return ("setkey", arg)
+    if t.startswith("/mykey"):
+        return ("mykey", "")
+    if t.startswith("/delkey"):
+        return ("delkey", "")
+    return (None, "")
+
+
 # ============== Slash Commands ==============
 
 
