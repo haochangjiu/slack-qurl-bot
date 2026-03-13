@@ -52,7 +52,7 @@ Type=simple
 User=root
 WorkingDirectory=$APP_DIR
 Environment=PATH=$APP_DIR/venv/bin
-ExecStart=$APP_DIR/venv/bin/python app.py
+ExecStart=$APP_DIR/venv/bin/python run.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
