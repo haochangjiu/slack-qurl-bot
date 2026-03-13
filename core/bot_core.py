@@ -8,6 +8,7 @@ Returns message content to be sent - each platform adapter formats & sends.
 import logging
 import re
 
+from config import settings
 from services.layerv import layerv_client, InvalidApiKeyError
 from services.ai_analyzer import ai_analyzer
 from services.url_parser import extract_urls, normalize_url, is_valid_url
@@ -20,15 +21,23 @@ logger = logging.getLogger(__name__)
 PLATFORM_SLACK = "slack"
 PLATFORM_DISCORD = "discord"
 
-# Slack uses a single shared API key for all users; Discord is per-user.
-_SLACK_SHARED_KEY_ID = "slack:__shared__"
-
 
 def _key_id(platform: str, raw_id: str) -> str:
-    """Get storage key ID. Slack shares one global key; Discord is per-user."""
-    if platform == PLATFORM_SLACK:
-        return _SLACK_SHARED_KEY_ID
+    """Get storage key ID for Discord (per-user)."""
     return f"{platform}:{raw_id}"
+
+
+def _get_api_key(platform: str, user_id: str) -> str | None:
+    """Get API key. Slack reads from .env; Discord from per-user store."""
+    if platform == PLATFORM_SLACK:
+        return settings.layerv_api_key
+    return user_store.get_api_key(_key_id(platform, user_id))
+
+
+def _has_api_key(platform: str, user_id: str) -> bool:
+    if platform == PLATFORM_SLACK:
+        return bool(settings.layerv_api_key)
+    return user_store.has_api_key(_key_id(platform, user_id))
 
 
 def preprocess_text(text: str, platform: str) -> str:
@@ -73,15 +82,15 @@ async def process_message(
     Returns:
         (message_to_send, language)
     """
-    kid = _key_id(platform, str(user_id))
     lang = "en"
 
     if not text:
         return f"{get_message('empty_input', lang)}", lang
 
-    if not user_store.has_api_key(kid):
+    if not _has_api_key(platform, str(user_id)):
         lang = detect_language(text)
-        return get_message("no_api_key", lang), lang
+        no_key_msg = "no_api_key_env" if platform == PLATFORM_SLACK else "no_api_key"
+        return get_message(no_key_msg, lang), lang
 
     try:
         analysis = await ai_analyzer.analyze(text)
@@ -100,9 +109,10 @@ async def process_message(
         if not all_urls:
             return get_message("no_url_detected", lang), lang
 
-        api_key = user_store.get_api_key(kid)
+        api_key = _get_api_key(platform, str(user_id))
         if not api_key:
-            return get_message("no_api_key", lang), lang
+            no_key_msg = "no_api_key_env" if platform == PLATFORM_SLACK else "no_api_key"
+            return get_message(no_key_msg, lang), lang
 
         results = []
         errors = []
@@ -131,7 +141,7 @@ async def process_message(
                     }
                 )
             except InvalidApiKeyError:
-                logger.error(f"Invalid API key ({kid})")
+                logger.error(f"Invalid API key for {platform}:{user_id}")
                 return get_message("invalid_api_key", lang), lang
             except Exception as e:
                 logger.error(f"Failed to create QURL for {url}: {e}")
@@ -163,8 +173,11 @@ async def process_message(
 
 async def handle_setkey(user_id: str, api_key: str, platform: str) -> tuple[str, str]:
     """Handle /setkey command. Returns (message, lang)."""
-    kid = _key_id(platform, str(user_id))
     lang = "en"
+    if platform == PLATFORM_SLACK:
+        return get_message("slack_cmd_disabled", lang), lang
+
+    kid = _key_id(platform, str(user_id))
     if not api_key:
         return get_message("setkey_usage", lang), lang
 
@@ -182,9 +195,16 @@ async def handle_mykey(
     user_tz: str | None = None,
 ) -> tuple[str, str]:
     """Handle /mykey command. Returns (message, lang)."""
-    kid = _key_id(platform, str(user_id))
     lang = "en"
 
+    if platform == PLATFORM_SLACK:
+        key = settings.layerv_api_key
+        if key:
+            prefix = key[:8] + "..." if len(key) > 8 else key
+            return get_message("slack_mykey_info", lang, prefix=prefix), lang
+        return get_message("no_api_key_env", lang), lang
+
+    kid = _key_id(platform, str(user_id))
     key_info = user_store.get_key_info(kid)
     if key_info:
         created_at = (
@@ -206,8 +226,11 @@ async def handle_mykey(
 
 async def handle_delkey(user_id: str, platform: str) -> tuple[str, str]:
     """Handle /delkey command. Returns (message, lang)."""
-    kid = _key_id(platform, str(user_id))
     lang = "en"
+    if platform == PLATFORM_SLACK:
+        return get_message("slack_cmd_disabled", lang), lang
+
+    kid = _key_id(platform, str(user_id))
     if user_store.delete_api_key(kid):
         return get_message("delkey_success", lang), lang
     return get_message("delkey_none", lang), lang

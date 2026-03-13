@@ -32,6 +32,9 @@ MESSAGES = {
             "请先私信我并使用 `/setkey <your_api_key>` 命令配置您的 LayerV API Key。\n\n"
             "获取 API Key: https://layerv.ai/qurl/dashboard/keys"
         ),
+        "no_api_key_env": "⚠️ API Key 未配置，请联系管理员在服务端 .env 文件中设置 LAYERV_API_KEY。",
+        "slack_cmd_disabled": "此命令在 Slack 中不可用。API Key 由管理员统一配置。",
+        "slack_mykey_info": "🔑 API Key: `{prefix}` (由管理员统一配置)",
         "setkey_usage": "用法: `/setkey <your_api_key>`\n\n从 LayerV 控制台获取您的 API Key: https://layerv.ai/qurl/dashboard/keys",
         "setkey_success": "✅ API Key 配置成功！现在可以使用 QURL 服务了。",
         "setkey_invalid": "❌ API Key 无效，请检查后重试。",
@@ -77,6 +80,9 @@ MESSAGES = {
             "Please DM me and use `/setkey <your_api_key>` to configure your LayerV API Key.\n\n"
             "Get your API Key: https://layerv.ai/qurl/dashboard/keys"
         ),
+        "no_api_key_env": "⚠️ API Key not configured. Please ask the admin to set LAYERV_API_KEY in the server .env file.",
+        "slack_cmd_disabled": "This command is not available on Slack. API Key is managed by the admin.",
+        "slack_mykey_info": "🔑 API Key: `{prefix}` (managed by admin)",
         "setkey_usage": "Usage: `/setkey <your_api_key>`\n\nGet your API Key from LayerV console: https://layerv.ai/qurl/dashboard/keys",
         "setkey_success": "✅ API Key configured successfully! You can now use the QURL service.",
         "setkey_invalid": "❌ Invalid API Key. Please check and try again.",
