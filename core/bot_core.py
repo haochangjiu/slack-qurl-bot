@@ -17,13 +17,17 @@ from services.time_utils import format_utc_to_local
 
 logger = logging.getLogger(__name__)
 
-# User IDs are namespaced: "slack:U123" or "discord:123456" to avoid collisions
 PLATFORM_SLACK = "slack"
 PLATFORM_DISCORD = "discord"
 
+# Slack uses a single shared API key for all users; Discord is per-user.
+_SLACK_SHARED_KEY_ID = "slack:__shared__"
 
-def _user_id(platform: str, raw_id: str) -> str:
-    """Namespace user ID by platform."""
+
+def _key_id(platform: str, raw_id: str) -> str:
+    """Get storage key ID. Slack shares one global key; Discord is per-user."""
+    if platform == PLATFORM_SLACK:
+        return _SLACK_SHARED_KEY_ID
     return f"{platform}:{raw_id}"
 
 
@@ -69,13 +73,13 @@ async def process_message(
     Returns:
         (message_to_send, language)
     """
-    ns_user_id = _user_id(platform, str(user_id))
+    kid = _key_id(platform, str(user_id))
     lang = "en"
 
     if not text:
         return f"{get_message('empty_input', lang)}", lang
 
-    if not user_store.has_api_key(ns_user_id):
+    if not user_store.has_api_key(kid):
         lang = detect_language(text)
         return get_message("no_api_key", lang), lang
 
@@ -96,7 +100,7 @@ async def process_message(
         if not all_urls:
             return get_message("no_url_detected", lang), lang
 
-        api_key = user_store.get_api_key(ns_user_id)
+        api_key = user_store.get_api_key(kid)
         if not api_key:
             return get_message("no_api_key", lang), lang
 
@@ -127,7 +131,7 @@ async def process_message(
                     }
                 )
             except InvalidApiKeyError:
-                logger.error(f"Invalid API key for user {ns_user_id}")
+                logger.error(f"Invalid API key ({kid})")
                 return get_message("invalid_api_key", lang), lang
             except Exception as e:
                 logger.error(f"Failed to create QURL for {url}: {e}")
@@ -159,16 +163,16 @@ async def process_message(
 
 async def handle_setkey(user_id: str, api_key: str, platform: str) -> tuple[str, str]:
     """Handle /setkey command. Returns (message, lang)."""
-    ns_user_id = _user_id(platform, str(user_id))
+    kid = _key_id(platform, str(user_id))
     lang = "en"
     if not api_key:
         return get_message("setkey_usage", lang), lang
 
     try:
-        user_store.set_api_key(ns_user_id, api_key)
+        user_store.set_api_key(kid, api_key)
         return get_message("setkey_success", lang), lang
     except Exception as e:
-        logger.error(f"Error setting API key for {ns_user_id}: {e}")
+        logger.error(f"Error setting API key ({kid}): {e}")
         return get_message("setkey_error", lang, error=str(e)), lang
 
 
@@ -178,10 +182,10 @@ async def handle_mykey(
     user_tz: str | None = None,
 ) -> tuple[str, str]:
     """Handle /mykey command. Returns (message, lang)."""
-    ns_user_id = _user_id(platform, str(user_id))
+    kid = _key_id(platform, str(user_id))
     lang = "en"
 
-    key_info = user_store.get_key_info(ns_user_id)
+    key_info = user_store.get_key_info(kid)
     if key_info:
         created_at = (
             format_utc_to_local(key_info["created_at"], user_tz=user_tz)
@@ -202,8 +206,8 @@ async def handle_mykey(
 
 async def handle_delkey(user_id: str, platform: str) -> tuple[str, str]:
     """Handle /delkey command. Returns (message, lang)."""
-    ns_user_id = _user_id(platform, str(user_id))
+    kid = _key_id(platform, str(user_id))
     lang = "en"
-    if user_store.delete_api_key(ns_user_id):
+    if user_store.delete_api_key(kid):
         return get_message("delkey_success", lang), lang
     return get_message("delkey_none", lang), lang

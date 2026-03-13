@@ -83,6 +83,17 @@ async def handle_delkey_slack(ack, command, say):
 # ============== Message Events ==============
 
 
+_bot_user_id: str | None = None
+
+
+async def _get_bot_user_id(client) -> str:
+    global _bot_user_id
+    if _bot_user_id is None:
+        auth = await client.auth_test()
+        _bot_user_id = auth["user_id"]
+    return _bot_user_id
+
+
 async def _send_dm(client, user: str, text: str):
     """Open a DM channel with the user and send a message."""
     resp = await client.conversations_open(users=user)
@@ -90,10 +101,22 @@ async def _send_dm(client, user: str, text: str):
     await client.chat_postMessage(channel=dm_channel, text=text)
 
 
+def _extract_slack_mentions(text: str) -> list[str]:
+    """Extract user IDs from Slack <@UXXXX> mentions."""
+    return re.findall(r"<@([A-Z0-9]+)>", text)
+
+
 @app.event("app_mention")
 async def handle_app_mention(event, say, client):
     text = event.get("text", "")
     user = event.get("user")
+
+    bot_id = await _get_bot_user_id(client)
+    other_users = [
+        uid for uid in _extract_slack_mentions(text)
+        if uid != bot_id and uid != user
+    ]
+
     clean_text = _preprocess_slack(text)
     if not clean_text:
         await say(f"<@{user}> {get_message('empty_input', 'en')}")
@@ -115,12 +138,26 @@ async def handle_app_mention(event, say, client):
     user_tz = await get_user_timezone(client, user) if client else None
     reply, lang = await process_message(clean_text, user, PLATFORM_SLACK, user_tz=user_tz)
 
-    # Send result via DM, leave a brief note in the channel
-    try:
-        await _send_dm(client, user, reply)
-        await say(f"<@{user}> {get_message('dm_sent', lang)}")
-    except Exception as e:
-        logger.warning(f"Cannot DM Slack user {user}: {e}, falling back to channel reply")
+    dm_targets = other_users if other_users else [user]
+    success = []
+    for target in dm_targets:
+        try:
+            if target == user:
+                await _send_dm(client, target, reply)
+            else:
+                header = get_message("dm_proxy_for_you", lang, from_user=f"<@{user}>")
+                await _send_dm(client, target, f"{header}\n{reply}")
+            success.append(target)
+        except Exception as e:
+            logger.warning(f"Cannot DM Slack user {target}: {e}")
+
+    if success:
+        if other_users:
+            mentions = " ".join(f"<@{u}>" for u in success)
+            await say(f"<@{user}> {get_message('dm_sent_to_users', lang, users=mentions)}")
+        else:
+            await say(f"<@{user}> {get_message('dm_sent', lang)}")
+    else:
         await say(f"<@{user}> {get_message('dm_failed', lang)}")
 
 

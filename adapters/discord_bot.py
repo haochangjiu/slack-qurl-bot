@@ -65,14 +65,37 @@ class QURLDiscordBot(discord.Client):
         if is_dm:
             await message.channel.send(reply_content)
         else:
-            # Channel mention: send result via DM, leave a brief note in the channel
-            try:
-                await message.author.send(reply_content)
-                await message.channel.send(
-                    f"{message.author.mention} {get_i18n_msg('dm_sent', lang)}"
-                )
-            except discord.Forbidden:
-                logger.warning(f"Cannot DM user {user_id}, falling back to channel reply")
+            other_users = [
+                m for m in message.mentions
+                if m.id != self.user.id and m.id != message.author.id
+            ]
+            dm_targets = other_users if other_users else [message.author]
+
+            success = []
+            for target in dm_targets:
+                try:
+                    if target.id == message.author.id:
+                        await target.send(reply_content)
+                    else:
+                        header = get_i18n_msg(
+                            "dm_proxy_for_you", lang, from_user=message.author.display_name
+                        )
+                        await target.send(f"{header}\n{reply_content}")
+                    success.append(target)
+                except discord.Forbidden:
+                    logger.warning(f"Cannot DM Discord user {target.id}")
+
+            if success:
+                if other_users:
+                    mentions = " ".join(u.mention for u in success)
+                    await message.channel.send(
+                        f"{message.author.mention} {get_i18n_msg('dm_sent_to_users', lang, users=mentions)}"
+                    )
+                else:
+                    await message.channel.send(
+                        f"{message.author.mention} {get_i18n_msg('dm_sent', lang)}"
+                    )
+            else:
                 await message.channel.send(
                     f"{message.author.mention} {get_i18n_msg('dm_failed', lang)}"
                 )
@@ -83,9 +106,9 @@ def get_empty_msg() -> str:
     return get_message("empty_input", "en")
 
 
-def get_i18n_msg(key: str, lang: str = "en") -> str:
+def get_i18n_msg(key: str, lang: str = "en", **kwargs) -> str:
     from services.i18n import get_message
-    return get_message(key, lang)
+    return get_message(key, lang, **kwargs)
 
 
 @app_commands.command(name="setkey", description="Configure your LayerV API Key")
