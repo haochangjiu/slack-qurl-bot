@@ -91,3 +91,7 @@ async def main():
     await _keep_alive(running_bots)
     logger.error("All bots have stopped. Exiting.")
     sys.exit(1)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
