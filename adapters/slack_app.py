@@ -83,6 +83,13 @@ async def handle_delkey_slack(ack, command, say):
 # ============== Message Events ==============
 
 
+async def _send_dm(client, user: str, text: str):
+    """Open a DM channel with the user and send a message."""
+    resp = await client.conversations_open(users=user)
+    dm_channel = resp["channel"]["id"]
+    await client.chat_postMessage(channel=dm_channel, text=text)
+
+
 @app.event("app_mention")
 async def handle_app_mention(event, say, client):
     text = event.get("text", "")
@@ -93,7 +100,6 @@ async def handle_app_mention(event, say, client):
         return
     logger.info(f"Slack mention from {user}: {clean_text}")
 
-    # Handle /setkey, /mykey, /delkey when typed as @bot /command (no URL matching)
     cmd, arg = _parse_command(clean_text)
     if cmd:
         if cmd == "setkey":
@@ -107,8 +113,15 @@ async def handle_app_mention(event, say, client):
         return
 
     user_tz = await get_user_timezone(client, user) if client else None
-    reply, _ = await process_message(clean_text, user, PLATFORM_SLACK, user_tz=user_tz)
-    await say(f"<@{user}> {reply}")
+    reply, lang = await process_message(clean_text, user, PLATFORM_SLACK, user_tz=user_tz)
+
+    # Send result via DM, leave a brief note in the channel
+    try:
+        await _send_dm(client, user, reply)
+        await say(f"<@{user}> {get_message('dm_sent', lang)}")
+    except Exception as e:
+        logger.warning(f"Cannot DM Slack user {user}: {e}, falling back to channel reply")
+        await say(f"<@{user}> {get_message('dm_failed', lang)}")
 
 
 @app.event("message")

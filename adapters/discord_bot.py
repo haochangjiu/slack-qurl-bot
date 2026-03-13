@@ -39,7 +39,6 @@ class QURLDiscordBot(discord.Client):
         if message.author.bot:
             return
 
-        # DMs or when bot is mentioned in a channel
         is_dm = isinstance(message.channel, discord.DMChannel)
         is_mention = self.user and self.user.mentioned_in(message)
 
@@ -51,7 +50,6 @@ class QURLDiscordBot(discord.Client):
             await message.channel.send(get_empty_msg())
             return
 
-        # Remove bot mention from text
         clean_text = preprocess_text(text, PLATFORM_DISCORD)
         if not clean_text and is_mention:
             await message.channel.send("Please include your request, e.g. `google.com I need a proxy`")
@@ -60,20 +58,34 @@ class QURLDiscordBot(discord.Client):
         user_id = str(message.author.id)
         user_tz = get_timezone_from_discord_locale(message.author.locale)
 
-        reply_content, _ = await process_message(
+        reply_content, lang = await process_message(
             clean_text, user_id, PLATFORM_DISCORD, user_tz=user_tz
         )
 
-        # Prefix with user mention for channel replies
-        if is_mention:
-            reply_content = f"{message.author.mention} {reply_content}"
-
-        await message.channel.send(reply_content)
+        if is_dm:
+            await message.channel.send(reply_content)
+        else:
+            # Channel mention: send result via DM, leave a brief note in the channel
+            try:
+                await message.author.send(reply_content)
+                await message.channel.send(
+                    f"{message.author.mention} {get_i18n_msg('dm_sent', lang)}"
+                )
+            except discord.Forbidden:
+                logger.warning(f"Cannot DM user {user_id}, falling back to channel reply")
+                await message.channel.send(
+                    f"{message.author.mention} {get_i18n_msg('dm_failed', lang)}"
+                )
 
 
 def get_empty_msg() -> str:
     from services.i18n import get_message
     return get_message("empty_input", "en")
+
+
+def get_i18n_msg(key: str, lang: str = "en") -> str:
+    from services.i18n import get_message
+    return get_message(key, lang)
 
 
 @app_commands.command(name="setkey", description="Configure your LayerV API Key")

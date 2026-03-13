@@ -41,6 +41,8 @@ MESSAGES = {
         "delkey_success": "✅ API Key 已删除。",
         "delkey_none": "您没有配置 API Key。",
         "invalid_api_key": "❌ 您的 API Key 已失效，请使用 `/setkey <new_api_key>` 重新配置。",
+        "dm_sent": "📩 结果已通过私信发送，请查看。",
+        "dm_failed": "⚠️ 无法发送私信，请检查您的隐私设置是否允许接收机器人私信。",
     },
     "en": {
         "empty_input": "Please enter the URL you want to access, e.g.: `google.com I need a proxy`",
@@ -82,6 +84,8 @@ MESSAGES = {
         "delkey_success": "✅ API Key deleted.",
         "delkey_none": "You don't have an API Key configured.",
         "invalid_api_key": "❌ Your API Key is invalid or expired. Please use `/setkey <new_api_key>` to reconfigure.",
+        "dm_sent": "📩 Result sent via DM. Please check your direct messages.",
+        "dm_failed": "⚠️ Unable to send DM. Please check your privacy settings to allow direct messages from bots.",
     },
 }
 
