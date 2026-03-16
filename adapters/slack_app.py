@@ -16,6 +16,7 @@ from core.bot_core import (
     process_message,
     analyze_message,
     build_proxy_reply,
+    _dashboard_reply,
     handle_setkey,
     handle_mykey,
     handle_delkey,
@@ -129,9 +130,9 @@ async def handle_app_mention(event, say, client):
     user = event.get("user")
 
     bot_id = await _get_bot_user_id(client)
-    other_users = [
+    mentioned_users = [
         uid for uid in _extract_slack_mentions(text)
-        if uid != bot_id and uid != user
+        if uid != bot_id
     ]
 
     clean_text = _preprocess_slack(text)
@@ -159,16 +160,18 @@ async def handle_app_mention(event, say, client):
 
     # Analyze once (AI + URL extraction)
     analysis = await analyze_message(clean_text, user, PLATFORM_SLACK)
+    if "dashboard" in analysis:
+        await say(f"<@{user}> {_dashboard_reply(analysis['lang'])}")
+        return
     if "error" in analysis:
         await say(f"<@{user}> {analysis['error']}")
         return
 
     lang = analysis["lang"]
-    dm_targets = other_users if other_users else [user]
+    dm_targets = mentioned_users if mentioned_users else [user]
 
     success = []
     for target in dm_targets:
-        # Generate unique proxy links per recipient
         reply, _ = await build_proxy_reply(
             analysis["urls"], analysis["api_key"], analysis["expires_in"],
             analysis["reason"], lang, PLATFORM_SLACK, user, user_tz=user_tz,
@@ -187,7 +190,7 @@ async def handle_app_mention(event, say, client):
             logger.warning(f"Cannot DM Slack user {target}: {e}")
 
     if success:
-        if other_users:
+        if mentioned_users:
             mentions = " ".join(f"<@{u}>" for u in success)
             await say(f"<@{user}> {get_message('dm_sent_to_users', lang, users=mentions)}")
         else:

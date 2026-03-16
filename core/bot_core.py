@@ -64,6 +64,24 @@ def detect_language(text: str) -> str:
     return "en"
 
 
+_QURL_DASHBOARD_PATTERNS = [
+    r"(?:access|visit|open|get|view|show)\s+qurl",
+    r"qurl\s*(?:dashboard|stats?|status|link|url|portal|console)",
+    r"查看\s*qurl",
+    r"访问\s*qurl",
+    r"打开\s*qurl",
+    r"qurl\s*(?:状态|统计|连接|链接|地址|面板|控制台)",
+    r"给我\s*qurl\s*(?:的|)\s*(?:连接|链接|地址|)",
+    r"我要\s*(?:访问|查看|打开)\s*qurl",
+]
+
+
+def _is_qurl_dashboard_request(text: str) -> bool:
+    """Check if the user is asking for the QURL dashboard/stats URL."""
+    t = text.lower().strip()
+    return any(re.search(p, t, re.IGNORECASE) for p in _QURL_DASHBOARD_PATTERNS)
+
+
 async def analyze_message(
     text: str, user_id: str, platform: str
 ) -> dict:
@@ -72,13 +90,18 @@ async def analyze_message(
     Call once, then use build_proxy_reply() per recipient.
 
     Returns dict:
-      success → {'urls', 'api_key', 'expires_in', 'reason', 'lang'}
-      error   → {'error', 'lang'}
+      success   → {'urls', 'api_key', 'expires_in', 'reason', 'lang'}
+      dashboard → {'dashboard': True, 'lang'}
+      error     → {'error', 'lang'}
     """
     lang = "en"
 
     if not text:
         return {"error": get_message("empty_input", lang), "lang": lang}
+
+    if _is_qurl_dashboard_request(text):
+        lang = detect_language(text)
+        return {"dashboard": True, "lang": lang}
 
     if not _has_api_key(platform, str(user_id)):
         lang = detect_language(text)
@@ -195,12 +218,21 @@ async def process_message(
 ) -> tuple[str, str]:
     """Single-user convenience wrapper: analyze once + build proxies."""
     result = await analyze_message(text, user_id, platform)
+    if "dashboard" in result:
+        return _dashboard_reply(result["lang"]), result["lang"]
     if "error" in result:
         return result["error"], result["lang"]
     return await build_proxy_reply(
         result["urls"], result["api_key"], result["expires_in"],
         result["reason"], result["lang"], platform, user_id, user_tz,
     )
+
+
+def _dashboard_reply(lang: str) -> str:
+    """Return the QURL dashboard URL or a not-configured message."""
+    if settings.layerv_stats_url:
+        return get_message("qurl_dashboard", lang, url=settings.layerv_stats_url)
+    return get_message("qurl_dashboard_not_configured", lang)
 
 
 async def handle_setkey(user_id: str, api_key: str, platform: str) -> tuple[str, str]:

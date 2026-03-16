@@ -14,6 +14,7 @@ from core.bot_core import (
     process_message,
     analyze_message,
     build_proxy_reply,
+    _dashboard_reply,
     handle_setkey,
     handle_mykey,
     handle_delkey,
@@ -75,13 +76,18 @@ class QURLDiscordBot(discord.Client):
             )
             await message.channel.send(reply_content)
         else:
-            other_users = [
+            mentioned_users = [
                 m for m in message.mentions
-                if m.id != self.user.id and m.id != message.author.id
+                if m.id != self.user.id
             ]
 
             # Analyze once (AI + URL extraction)
             analysis = await analyze_message(clean_text, user_id, PLATFORM_DISCORD)
+            if "dashboard" in analysis:
+                await message.channel.send(
+                    f"{message.author.mention} {_dashboard_reply(analysis['lang'])}"
+                )
+                return
             if "error" in analysis:
                 await message.channel.send(
                     f"{message.author.mention} {analysis['error']}"
@@ -89,7 +95,7 @@ class QURLDiscordBot(discord.Client):
                 return
 
             lang = analysis["lang"]
-            dm_targets = other_users if other_users else [message.author]
+            dm_targets = mentioned_users if mentioned_users else [message.author]
 
             success = []
             for target in dm_targets:
@@ -112,7 +118,7 @@ class QURLDiscordBot(discord.Client):
                     logger.warning(f"Cannot DM Discord user {target} (id: {target.id})")
 
             if success:
-                if other_users:
+                if mentioned_users:
                     mentions = " ".join(u.mention for u in success)
                     await message.channel.send(
                         f"{message.author.mention} {get_i18n_msg('dm_sent_to_users', lang, users=mentions)}"

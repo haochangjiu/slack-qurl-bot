@@ -48,6 +48,8 @@ MESSAGES = {
         "dm_sent_to_users": "📩 代理链接已通过私信发送给 {users}。",
         "dm_proxy_for_you": "📩 {from_user} 为您请求了代理链接：",
         "dm_failed": "⚠️ 无法发送私信，请检查您的隐私设置是否允许接收机器人私信。",
+        "qurl_dashboard": "📊 QURL Dashboard: {url}",
+        "qurl_dashboard_not_configured": "⚠️ QURL Dashboard 地址未配置，请联系管理员。",
     },
     "en": {
         "empty_input": "Please enter the URL you want to access, e.g.: `google.com I need a proxy`",
@@ -96,6 +98,8 @@ MESSAGES = {
         "dm_sent_to_users": "📩 Proxy link sent via DM to {users}.",
         "dm_proxy_for_you": "📩 {from_user} requested a proxy link for you:",
         "dm_failed": "⚠️ Unable to send DM. Please check your privacy settings to allow direct messages from bots.",
+        "qurl_dashboard": "📊 QURL Dashboard: {url}",
+        "qurl_dashboard_not_configured": "⚠️ QURL Dashboard URL is not configured. Please contact the admin.",
     },
 }
 
