@@ -65,7 +65,7 @@ class QURLDiscordBot(discord.Client):
             return
 
         user_id = str(message.author.id)
-        user_tz = get_timezone_from_discord_locale(message.author.locale)
+        user_tz = get_timezone_from_discord_locale(getattr(message.author, "locale", None))
         logger.info(
             f"Discord request from {message.author} (id: {user_id}): {clean_text}"
         )
