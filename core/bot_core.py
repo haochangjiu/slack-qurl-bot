@@ -64,22 +64,43 @@ def detect_language(text: str) -> str:
     return "en"
 
 
-_QURL_DASHBOARD_PATTERNS = [
-    r"(?:access|visit|open|get|view|show)\s+qurl",
-    r"qurl\s*(?:dashboard|stats?|status|link|url|portal|console)",
-    r"查看\s*qurl",
-    r"访问\s*qurl",
-    r"打开\s*qurl",
-    r"qurl\s*(?:状态|统计|连接|链接|地址|面板|控制台)",
-    r"给我\s*qurl\s*(?:的|)\s*(?:连接|链接|地址|)",
-    r"我要\s*(?:访问|查看|打开)\s*qurl",
+_QURL_DASHBOARD_KEYWORDS = [
+    "dashboard", "stats", "stat", "status", "portal", "console",
+    "状态", "统计", "面板", "控制台",
 ]
+_QURL_ACCESS_KEYWORDS_ZH = ["查看", "访问", "打开", "给我", "我要", "链接", "连接", "地址"]
+
+_KNOWN_SITE_NAMES = [
+    "google", "youtube", "github", "amazon", "facebook", "twitter",
+    "instagram", "netflix", "reddit", "linkedin", "baidu", "taobao",
+    "chatgpt", "openai", "wikipedia", "spotify", "tiktok", "slack",
+    "discord", "notion", "figma", "vercel", "stackoverflow",
+    "谷歌", "油管", "亚马逊", "脸书", "推特", "百度", "淘宝", "维基百科",
+]
+
+
+def _has_external_url_or_site(text: str) -> bool:
+    """Check if text contains URLs, domains, or website names other than 'qurl'."""
+    t = re.sub(r"qurl", "", text.lower())
+    if re.search(r"https?://", t):
+        return True
+    if re.search(r"\b[\w-]+\.(?:com|org|net|io|ai|xyz|dev|co|me|cn|uk|jp)\b", t):
+        return True
+    return any(site in t for site in _KNOWN_SITE_NAMES)
 
 
 def _is_qurl_dashboard_request(text: str) -> bool:
     """Check if the user is asking for the QURL dashboard/stats URL."""
     t = text.lower().strip()
-    return any(re.search(p, t, re.IGNORECASE) for p in _QURL_DASHBOARD_PATTERNS)
+    if "qurl" not in t:
+        return False
+    if _has_external_url_or_site(t):
+        return False
+    if any(kw in t for kw in _QURL_DASHBOARD_KEYWORDS):
+        return True
+    if any(kw in t for kw in _QURL_ACCESS_KEYWORDS_ZH):
+        return True
+    return False
 
 
 async def analyze_message(
