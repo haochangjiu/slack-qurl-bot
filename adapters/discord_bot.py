@@ -23,6 +23,18 @@ from core.bot_core import (
 )
 from services.time_utils import get_timezone_from_discord_locale
 
+
+def _parse_command(text: str) -> tuple[str | None, str]:
+    """Parse /setkey, /mykey, /delkey from message text."""
+    t = text.strip()
+    if t.startswith("/setkey"):
+        return ("setkey", t[7:].strip())
+    if t.startswith("/mykey"):
+        return ("mykey", "")
+    if t.startswith("/delkey"):
+        return ("delkey", "")
+    return (None, "")
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,6 +55,12 @@ class QURLDiscordBot(discord.Client):
 
     async def on_ready(self):
         logger.info(f"Discord bot logged in as {self.user}")
+        logger.info(
+            "[Discord] Platform limitations: "
+            "user email not available (API restriction); "
+            "user timezone inferred from locale when possible, defaults to UTC; "
+            "App Home not supported (no Discord equivalent)"
+        )
 
     async def on_message(self, message: discord.Message):
         if message.author.bot:
@@ -65,16 +83,42 @@ class QURLDiscordBot(discord.Client):
             return
 
         user_id = str(message.author.id)
-        user_tz = get_timezone_from_discord_locale(getattr(message.author, "locale", None))
+        locale = getattr(message.author, "locale", None)
+        user_tz = get_timezone_from_discord_locale(locale)
+        if not user_tz:
+            logger.debug(f"Discord user {message.author} (id: {user_id}): timezone unavailable (locale={locale}), using UTC")
         logger.info(
-            f"Discord request from {message.author} (id: {user_id}): {clean_text}"
+            f"Discord {'DM' if is_dm else 'mention'} from {message.author} (id: {user_id}): {clean_text}"
         )
 
+        cmd, arg = _parse_command(clean_text)
+        if cmd:
+            if cmd == "setkey":
+                msg, _ = await handle_setkey(user_id, arg, PLATFORM_DISCORD)
+            elif cmd == "mykey":
+                msg, _ = await handle_mykey(user_id, PLATFORM_DISCORD, user_tz=user_tz)
+            else:
+                msg, _ = await handle_delkey(user_id, PLATFORM_DISCORD)
+            if is_dm:
+                await message.channel.send(msg)
+            else:
+                await message.channel.send(f"{message.author.mention} {msg}")
+            return
+
         if is_dm:
-            reply_content, _ = await process_message(
-                clean_text, user_id, PLATFORM_DISCORD, user_tz=user_tz
+            # Analyze (includes dashboard shortcut check)
+            analysis = await analyze_message(clean_text, user_id, PLATFORM_DISCORD)
+            if "dashboard" in analysis:
+                await message.channel.send(_dashboard_reply(analysis["lang"]))
+                return
+            if "error" in analysis:
+                await message.channel.send(analysis["error"])
+                return
+            reply, _ = await build_proxy_reply(
+                analysis["urls"], analysis["api_key"], analysis["expires_in"],
+                analysis["reason"], analysis["lang"], PLATFORM_DISCORD, user_id, user_tz=user_tz,
             )
-            await message.channel.send(reply_content)
+            await message.channel.send(reply)
         else:
             mentioned_users = [
                 m for m in message.mentions
