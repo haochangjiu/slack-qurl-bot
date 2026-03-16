@@ -14,7 +14,7 @@ from services.ai_analyzer import ai_analyzer
 from services.url_parser import extract_urls, normalize_url, is_valid_url
 from services.i18n import get_message
 from services.user_store import user_store
-from services.time_utils import format_utc_to_local, format_expiry_relative
+from services.time_utils import format_utc_to_local, format_expires_in_display
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +198,7 @@ async def build_proxy_reply(
             if user_tz:
                 expires_display = format_utc_to_local(qurl_response.expires_at, user_tz=user_tz)
             else:
-                expires_display = format_expiry_relative(qurl_response.expires_at, lang)
+                expires_display = format_expires_in_display(expires_in, lang)
             results.append(
                 {
                     "original_url": url,

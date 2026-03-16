@@ -1,6 +1,7 @@
 """Time formatting with timezone support for Slack bot responses."""
 
 import logging
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -56,41 +57,32 @@ def format_utc_to_local(
     return dt_local.strftime(DATETIME_FORMAT) + tz_label
 
 
-def format_expiry_relative(iso_utc_str: str, lang: str = "en") -> str:
+def format_expires_in_display(expires_in: str | None, lang: str = "en") -> str:
     """
-    Format expiry as relative duration when user timezone is unknown.
-    e.g. "in 30 minutes" / "30 分钟"
+    Format the configured expires_in value (e.g. "30m", "1h", "7d") into
+    a human-readable string like "30 minutes" / "30 分钟".
     """
-    try:
-        parse_str = iso_utc_str.replace("Z", "+00:00").strip()
-        dt_utc = datetime.fromisoformat(parse_str)
-        if dt_utc.tzinfo is None:
-            dt_utc = dt_utc.replace(tzinfo=ZoneInfo("UTC"))
+    if not expires_in:
+        from config import settings
+        expires_in = settings.qurl_default_expires_in
 
-        now = datetime.now(ZoneInfo("UTC"))
-        total_seconds = max(int((dt_utc - now).total_seconds()), 0)
+    is_zh = lang == "zh"
+    match = re.match(r"^(\d+)\s*([mhdw])$", expires_in.strip().lower())
+    if not match:
+        return expires_in
 
-        minutes = total_seconds // 60
-        hours = minutes // 60
-        days = hours // 24
-        is_zh = lang == "zh"
+    value = int(match.group(1))
+    unit = match.group(2)
 
-        if days > 0:
-            remaining_hours = hours % 24
-            if remaining_hours and days < 7:
-                return f"{days} 天 {remaining_hours} 小时" if is_zh else f"in {days}d {remaining_hours}h"
-            return f"{days} 天" if is_zh else f"in {days} day{'s' if days > 1 else ''}"
-        if hours > 0:
-            remaining_min = minutes % 60
-            if remaining_min:
-                return f"{hours} 小时 {remaining_min} 分钟" if is_zh else f"in {hours}h {remaining_min}min"
-            return f"{hours} 小时" if is_zh else f"in {hours} hour{'s' if hours > 1 else ''}"
-        if minutes > 0:
-            return f"{minutes} 分钟" if is_zh else f"in {minutes} minute{'s' if minutes > 1 else ''}"
-        return "< 1 分钟" if is_zh else "in less than 1 minute"
-    except (ValueError, TypeError) as e:
-        logger.warning(f"Failed to compute relative expiry for {iso_utc_str}: {e}")
-        return iso_utc_str
+    if unit == "m":
+        return f"{value} 分钟" if is_zh else f"{value} minute{'s' if value > 1 else ''}"
+    if unit == "h":
+        return f"{value} 小时" if is_zh else f"{value} hour{'s' if value > 1 else ''}"
+    if unit == "d":
+        return f"{value} 天" if is_zh else f"{value} day{'s' if value > 1 else ''}"
+    if unit == "w":
+        return f"{value} 周" if is_zh else f"{value} week{'s' if value > 1 else ''}"
+    return expires_in
 
 
 async def get_user_timezone(client, user_id: str) -> str | None:
