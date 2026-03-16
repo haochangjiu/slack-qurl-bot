@@ -56,6 +56,43 @@ def format_utc_to_local(
     return dt_local.strftime(DATETIME_FORMAT) + tz_label
 
 
+def format_expiry_relative(iso_utc_str: str, lang: str = "en") -> str:
+    """
+    Format expiry as relative duration when user timezone is unknown.
+    e.g. "in 30 minutes" / "30 分钟"
+    """
+    try:
+        parse_str = iso_utc_str.replace("Z", "+00:00").strip()
+        dt_utc = datetime.fromisoformat(parse_str)
+        if dt_utc.tzinfo is None:
+            dt_utc = dt_utc.replace(tzinfo=ZoneInfo("UTC"))
+
+        now = datetime.now(ZoneInfo("UTC"))
+        total_seconds = max(int((dt_utc - now).total_seconds()), 0)
+
+        minutes = total_seconds // 60
+        hours = minutes // 60
+        days = hours // 24
+        is_zh = lang == "zh"
+
+        if days > 0:
+            remaining_hours = hours % 24
+            if remaining_hours and days < 7:
+                return f"{days} 天 {remaining_hours} 小时" if is_zh else f"in {days}d {remaining_hours}h"
+            return f"{days} 天" if is_zh else f"in {days} day{'s' if days > 1 else ''}"
+        if hours > 0:
+            remaining_min = minutes % 60
+            if remaining_min:
+                return f"{hours} 小时 {remaining_min} 分钟" if is_zh else f"in {hours}h {remaining_min}min"
+            return f"{hours} 小时" if is_zh else f"in {hours} hour{'s' if hours > 1 else ''}"
+        if minutes > 0:
+            return f"{minutes} 分钟" if is_zh else f"in {minutes} minute{'s' if minutes > 1 else ''}"
+        return "< 1 分钟" if is_zh else "in less than 1 minute"
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Failed to compute relative expiry for {iso_utc_str}: {e}")
+        return iso_utc_str
+
+
 async def get_user_timezone(client, user_id: str) -> str | None:
     """
     Get user's timezone from Slack API.
