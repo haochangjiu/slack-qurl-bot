@@ -10,8 +10,16 @@ import discord
 from discord import app_commands
 
 from config import settings
-from core.bot_core import process_message, handle_setkey, handle_mykey, handle_delkey
-from core.bot_core import preprocess_text, PLATFORM_DISCORD
+from core.bot_core import (
+    process_message,
+    analyze_message,
+    build_proxy_reply,
+    handle_setkey,
+    handle_mykey,
+    handle_delkey,
+    preprocess_text,
+    PLATFORM_DISCORD,
+)
 from services.time_utils import get_timezone_from_discord_locale
 
 logger = logging.getLogger(__name__)
@@ -57,33 +65,51 @@ class QURLDiscordBot(discord.Client):
 
         user_id = str(message.author.id)
         user_tz = get_timezone_from_discord_locale(message.author.locale)
-
-        reply_content, lang = await process_message(
-            clean_text, user_id, PLATFORM_DISCORD, user_tz=user_tz
+        logger.info(
+            f"Discord request from {message.author} (id: {user_id}): {clean_text}"
         )
 
         if is_dm:
+            reply_content, _ = await process_message(
+                clean_text, user_id, PLATFORM_DISCORD, user_tz=user_tz
+            )
             await message.channel.send(reply_content)
         else:
             other_users = [
                 m for m in message.mentions
                 if m.id != self.user.id and m.id != message.author.id
             ]
+
+            # Analyze once (AI + URL extraction)
+            analysis = await analyze_message(clean_text, user_id, PLATFORM_DISCORD)
+            if "error" in analysis:
+                await message.channel.send(
+                    f"{message.author.mention} {analysis['error']}"
+                )
+                return
+
+            lang = analysis["lang"]
             dm_targets = other_users if other_users else [message.author]
 
             success = []
             for target in dm_targets:
+                # Generate unique proxy links per recipient
+                reply, _ = await build_proxy_reply(
+                    analysis["urls"], analysis["api_key"], analysis["expires_in"],
+                    analysis["reason"], lang, PLATFORM_DISCORD, user_id, user_tz=user_tz,
+                )
                 try:
                     if target.id == message.author.id:
-                        await target.send(reply_content)
+                        await target.send(reply)
                     else:
+                        logger.info(f"Sending proxy to Discord user {target} (id: {target.id})")
                         header = get_i18n_msg(
                             "dm_proxy_for_you", lang, from_user=message.author.display_name
                         )
-                        await target.send(f"{header}\n{reply_content}")
+                        await target.send(f"{header}\n{reply}")
                     success.append(target)
                 except discord.Forbidden:
-                    logger.warning(f"Cannot DM Discord user {target.id}")
+                    logger.warning(f"Cannot DM Discord user {target} (id: {target.id})")
 
             if success:
                 if other_users:

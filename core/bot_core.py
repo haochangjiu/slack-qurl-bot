@@ -64,33 +64,26 @@ def detect_language(text: str) -> str:
     return "en"
 
 
-async def process_message(
-    text: str,
-    user_id: str,
-    platform: str,
-    user_tz: str | None = None,
-) -> tuple[str, str]:
+async def analyze_message(
+    text: str, user_id: str, platform: str
+) -> dict:
     """
-    Core message processing logic. Platform-agnostic.
+    Analyze message: AI analysis + URL extraction + API key validation.
+    Call once, then use build_proxy_reply() per recipient.
 
-    Args:
-        text: User message content (after preprocessing)
-        user_id: Raw platform user ID (Slack U123 or Discord snowflake)
-        platform: "slack" or "discord"
-        user_tz: IANA timezone for expiry display (e.g. "Asia/Shanghai"), optional
-
-    Returns:
-        (message_to_send, language)
+    Returns dict:
+      success → {'urls', 'api_key', 'expires_in', 'reason', 'lang'}
+      error   → {'error', 'lang'}
     """
     lang = "en"
 
     if not text:
-        return f"{get_message('empty_input', lang)}", lang
+        return {"error": get_message("empty_input", lang), "lang": lang}
 
     if not _has_api_key(platform, str(user_id)):
         lang = detect_language(text)
         no_key_msg = "no_api_key_env" if platform == PLATFORM_SLACK else "no_api_key"
-        return get_message(no_key_msg, lang), lang
+        return {"error": get_message(no_key_msg, lang), "lang": lang}
 
     try:
         analysis = await ai_analyzer.analyze(text)
@@ -107,68 +100,107 @@ async def process_message(
         all_urls = list(dict.fromkeys(normalized))
 
         if not all_urls:
-            return get_message("no_url_detected", lang), lang
+            return {"error": get_message("no_url_detected", lang), "lang": lang}
 
         api_key = _get_api_key(platform, str(user_id))
         if not api_key:
             no_key_msg = "no_api_key_env" if platform == PLATFORM_SLACK else "no_api_key"
-            return get_message(no_key_msg, lang), lang
+            return {"error": get_message(no_key_msg, lang), "lang": lang}
 
-        results = []
-        errors = []
-
-        for url in all_urls:
-            if not is_valid_url(url):
-                errors.append(get_message("invalid_url", lang, url=url))
-                continue
-
-            try:
-                qurl_response = await layerv_client.create_qurl(
-                    api_key=api_key,
-                    target_url=url,
-                    expires_in=analysis.expires_in,
-                    description=analysis.reason
-                    or f"Generated via {platform} bot for user {user_id}",
-                )
-                results.append(
-                    {
-                        "original_url": url,
-                        "qurl_link": qurl_response.qurl_link,
-                        "expires_at": format_utc_to_local(
-                            qurl_response.expires_at,
-                            user_tz=user_tz,
-                        ),
-                    }
-                )
-            except InvalidApiKeyError:
-                logger.error(f"Invalid API key for {platform}:{user_id}")
-                return get_message("invalid_api_key", lang), lang
-            except Exception as e:
-                logger.error(f"Failed to create QURL for {url}: {e}")
-                errors.append(get_message("failed_item", lang, url=url, error=str(e)))
-
-        parts = []
-        if results:
-            parts.append(get_message("proxy_generated_header", lang))
-            for r in results:
-                parts.append(
-                    get_message(
-                        "proxy_item",
-                        lang,
-                        original_url=r["original_url"],
-                        qurl_link=r["qurl_link"],
-                        expires_at=r["expires_at"],
-                    )
-                )
-        if errors:
-            parts.append(get_message("failed_header", lang))
-            parts.extend([f"\n{e}" for e in errors])
-
-        return "".join(parts), lang
-
+        return {
+            "urls": all_urls,
+            "api_key": api_key,
+            "expires_in": analysis.expires_in,
+            "reason": analysis.reason,
+            "lang": lang,
+        }
     except Exception as e:
-        logger.error(f"Error processing message: {e}")
-        return get_message("processing_error", lang, error=str(e)), lang
+        logger.error(f"Error analyzing message: {e}")
+        return {"error": get_message("processing_error", lang, error=str(e)), "lang": lang}
+
+
+async def build_proxy_reply(
+    urls: list[str],
+    api_key: str,
+    expires_in: str,
+    reason: str,
+    lang: str,
+    platform: str,
+    user_id: str,
+    user_tz: str | None = None,
+) -> tuple[str, str]:
+    """
+    Generate unique QURL proxy links for the given URLs.
+    Each call creates new links — call once per recipient for unique links.
+
+    Returns (formatted_message, language).
+    """
+    results = []
+    errors = []
+
+    for url in urls:
+        if not is_valid_url(url):
+            errors.append(get_message("invalid_url", lang, url=url))
+            continue
+
+        try:
+            qurl_response = await layerv_client.create_qurl(
+                api_key=api_key,
+                target_url=url,
+                expires_in=expires_in,
+                description=reason
+                or f"Generated via {platform} bot for user {user_id}",
+            )
+            results.append(
+                {
+                    "original_url": url,
+                    "qurl_link": qurl_response.qurl_link,
+                    "expires_at": format_utc_to_local(
+                        qurl_response.expires_at, user_tz=user_tz
+                    ),
+                }
+            )
+        except InvalidApiKeyError:
+            logger.error(f"Invalid API key for {platform}:{user_id}")
+            return get_message("invalid_api_key", lang), lang
+        except Exception as e:
+            logger.error(f"Failed to create QURL for {url}: {e}")
+            errors.append(get_message("failed_item", lang, url=url, error=str(e)))
+
+    parts = []
+    if results:
+        parts.append(get_message("proxy_generated_header", lang))
+        for r in results:
+            parts.append(
+                get_message(
+                    "proxy_item",
+                    lang,
+                    original_url=r["original_url"],
+                    qurl_link=r["qurl_link"],
+                    expires_at=r["expires_at"],
+                )
+            )
+    if errors:
+        parts.append(get_message("failed_header", lang))
+        parts.extend([f"\n{e}" for e in errors])
+
+    return "".join(parts), lang
+
+
+async def process_message(
+    text: str,
+    user_id: str,
+    platform: str,
+    user_tz: str | None = None,
+) -> tuple[str, str]:
+    """Single-user convenience wrapper: analyze once + build proxies."""
+    result = await analyze_message(text, user_id, platform)
+    if "error" in result:
+        return result["error"], result["lang"]
+    return await build_proxy_reply(
+        result["urls"], result["api_key"], result["expires_in"],
+        result["reason"], result["lang"], platform, user_id, user_tz,
+    )
 
 
 async def handle_setkey(user_id: str, api_key: str, platform: str) -> tuple[str, str]:

@@ -14,6 +14,8 @@ from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from config import settings
 from core.bot_core import (
     process_message,
+    analyze_message,
+    build_proxy_reply,
     handle_setkey,
     handle_mykey,
     handle_delkey,
@@ -21,7 +23,6 @@ from core.bot_core import (
     PLATFORM_SLACK,
 )
 from services.i18n import get_message
-from services.time_utils import get_user_timezone
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -67,8 +68,8 @@ async def handle_setkey_slack(ack, command, say):
 async def handle_mykey_slack(ack, command, say, client):
     await ack()
     user_id = command["user_id"]
-    user_tz = await get_user_timezone(client, user_id) if client else None
-    msg, _ = await handle_mykey(user_id, PLATFORM_SLACK, user_tz=user_tz)
+    user_info = await _get_slack_user_info(client, user_id)
+    msg, _ = await handle_mykey(user_id, PLATFORM_SLACK, user_tz=user_info["tz"])
     await say(msg)
 
 
@@ -92,6 +93,22 @@ async def _get_bot_user_id(client) -> str:
         auth = await client.auth_test()
         _bot_user_id = auth["user_id"]
     return _bot_user_id
+
+
+async def _get_slack_user_info(client, user_id: str) -> dict:
+    """Get timezone and email from a single users_info call."""
+    info: dict = {"tz": None, "email": None}
+    if not client:
+        return info
+    try:
+        response = await client.users_info(user=user_id)
+        if response.get("ok") and response.get("user"):
+            user_data = response["user"]
+            info["tz"] = user_data.get("tz")
+            info["email"] = user_data.get("profile", {}).get("email")
+    except Exception as e:
+        logger.warning(f"Failed to get user info for {user_id}: {e}")
+    return info
 
 
 async def _send_dm(client, user: str, text: str):
@@ -121,30 +138,48 @@ async def handle_app_mention(event, say, client):
     if not clean_text:
         await say(f"<@{user}> {get_message('empty_input', 'en')}")
         return
-    logger.info(f"Slack mention from {user}: {clean_text}")
+
+    user_info = await _get_slack_user_info(client, user)
+    user_tz = user_info["tz"]
+    if user_info["email"]:
+        logger.info(f"Slack request from {user} (email: {user_info['email']}): {clean_text}")
+    else:
+        logger.info(f"Slack mention from {user}: {clean_text}")
 
     cmd, arg = _parse_command(clean_text)
     if cmd:
         if cmd == "setkey":
             msg, _ = await handle_setkey(user, arg, PLATFORM_SLACK)
         elif cmd == "mykey":
-            user_tz = await get_user_timezone(client, user) if client else None
             msg, _ = await handle_mykey(user, PLATFORM_SLACK, user_tz=user_tz)
         else:  # delkey
             msg, _ = await handle_delkey(user, PLATFORM_SLACK)
         await say(f"<@{user}> {msg}")
         return
 
-    user_tz = await get_user_timezone(client, user) if client else None
-    reply, lang = await process_message(clean_text, user, PLATFORM_SLACK, user_tz=user_tz)
+    # Analyze once (AI + URL extraction)
+    analysis = await analyze_message(clean_text, user, PLATFORM_SLACK)
+    if "error" in analysis:
+        await say(f"<@{user}> {analysis['error']}")
+        return
 
+    lang = analysis["lang"]
     dm_targets = other_users if other_users else [user]
+
     success = []
     for target in dm_targets:
+        # Generate unique proxy links per recipient
+        reply, _ = await build_proxy_reply(
+            analysis["urls"], analysis["api_key"], analysis["expires_in"],
+            analysis["reason"], lang, PLATFORM_SLACK, user, user_tz=user_tz,
+        )
         try:
             if target == user:
                 await _send_dm(client, target, reply)
             else:
+                target_info = await _get_slack_user_info(client, target)
+                if target_info["email"]:
+                    logger.info(f"Sending proxy to {target} (email: {target_info['email']})")
                 header = get_message("dm_proxy_for_you", lang, from_user=f"<@{user}>")
                 await _send_dm(client, target, f"{header}\n{reply}")
             success.append(target)
@@ -176,22 +211,25 @@ async def handle_direct_message(event, say, client):
     if not clean_text:
         await say(f"<@{user}> {get_message('empty_input', 'en')}")
         return
-    logger.info(f"Slack DM from {user}: {clean_text}")
+
+    user_info = await _get_slack_user_info(client, user)
+    if user_info["email"]:
+        logger.info(f"Slack DM from {user} (email: {user_info['email']}): {clean_text}")
+    else:
+        logger.info(f"Slack DM from {user}: {clean_text}")
 
     cmd, arg = _parse_command(clean_text)
     if cmd:
         if cmd == "setkey":
             msg, _ = await handle_setkey(user, arg, PLATFORM_SLACK)
         elif cmd == "mykey":
-            user_tz = await get_user_timezone(client, user) if client else None
-            msg, _ = await handle_mykey(user, PLATFORM_SLACK, user_tz=user_tz)
+            msg, _ = await handle_mykey(user, PLATFORM_SLACK, user_tz=user_info["tz"])
         else:
             msg, _ = await handle_delkey(user, PLATFORM_SLACK)
         await say(f"<@{user}> {msg}")
         return
 
-    user_tz = await get_user_timezone(client, user) if client else None
-    reply, _ = await process_message(clean_text, user, PLATFORM_SLACK, user_tz=user_tz)
+    reply, _ = await process_message(clean_text, user, PLATFORM_SLACK, user_tz=user_info["tz"])
     await say(f"<@{user}> {reply}")
 
 
