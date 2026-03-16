@@ -50,6 +50,12 @@ MESSAGES = {
         "dm_failed": "⚠️ 无法发送私信，请检查您的隐私设置是否允许接收机器人私信。",
         "qurl_dashboard": "📊 QURL Dashboard: {url}",
         "qurl_dashboard_not_configured": "⚠️ QURL Dashboard 地址未配置，请联系管理员。",
+        # File upload
+        "upload_not_configured": "⚠️ 文件上传功能未配置，请联系管理员设置 UPLOAD_API_URL。",
+        "upload_header": "📎 *文件已上传:*",
+        "upload_item": "\n• 文件名: `{filename}`\n  代理链接: {qurl_link}\n  有效期: {expires_at}",
+        "upload_item_fallback": "\n• 文件名: `{filename}`\n  资源链接: {resource_url}\n  (QURL 创建失败，直接链接仍可用)",
+        "upload_failed": "• {filename}: 上传失败 - {error}",
     },
     "en": {
         "empty_input": "Please enter the URL you want to access, e.g.: `google.com I need a proxy`",
@@ -100,6 +106,12 @@ MESSAGES = {
         "dm_failed": "⚠️ Unable to send DM. Please check your privacy settings to allow direct messages from bots.",
         "qurl_dashboard": "📊 QURL Dashboard: {url}",
         "qurl_dashboard_not_configured": "⚠️ QURL Dashboard URL is not configured. Please contact the admin.",
+        # File upload
+        "upload_not_configured": "⚠️ File upload not configured. Ask admin to set UPLOAD_API_URL.",
+        "upload_header": "📎 *File uploaded:*",
+        "upload_item": "\n• File: `{filename}`\n  Proxy link: {qurl_link}\n  Expires: {expires_at}",
+        "upload_item_fallback": "\n• File: `{filename}`\n  Resource URL: {resource_url}\n  (QURL creation failed, direct link still valid)",
+        "upload_failed": "• {filename}: Upload failed - {error}",
     },
 }
 

@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # Encryption secret for storing user API keys
     encryption_secret: str = "slack-qurl-bot-default-secret"
 
+    # File upload API (Discord file upload to QURL)
+    upload_api_url: str | None = None  # e.g. http://localhost:8080
+
     class Config:
         env_file = ".env"
 

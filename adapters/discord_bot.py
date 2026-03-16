@@ -7,6 +7,7 @@ import logging
 import re
 
 import discord
+import httpx
 from discord import app_commands
 
 from config import settings
@@ -21,7 +22,52 @@ from core.bot_core import (
     preprocess_text,
     PLATFORM_DISCORD,
 )
-from services.time_utils import get_timezone_from_discord_locale
+from services.time_utils import get_timezone_from_discord_locale, format_utc_to_local, format_expires_in_display
+from services.upload_client import upload_file
+
+
+async def _handle_file_upload(message: discord.Message, is_dm: bool) -> None:
+    """Download attachments, upload to API, send QURL links."""
+    locale = getattr(message.author, "locale", None)
+    lang = "zh" if locale and str(locale).startswith("zh") else "en"
+    user_tz = get_timezone_from_discord_locale(locale)
+
+    results = []
+    errors = []
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for att in message.attachments:
+            try:
+                r = await client.get(att.url)
+                r.raise_for_status()
+                file_bytes = r.content
+            except Exception as e:
+                logger.warning(f"Failed to download attachment {att.filename}: {e}")
+                errors.append(get_i18n_msg("upload_failed", lang, filename=att.filename, error=str(e)))
+                continue
+            ct = att.content_type or "application/octet-stream"
+            result = await upload_file(file_bytes, att.filename, ct)
+            if not result.success:
+                errors.append(get_i18n_msg("upload_failed", lang, filename=att.filename, error=result.error or "Unknown"))
+                continue
+            if result.qurl_link:
+                exp = format_utc_to_local(result.expires_at, user_tz=user_tz) if result.expires_at else "-"
+                results.append(get_i18n_msg("upload_item", lang, filename=att.filename, qurl_link=result.qurl_link, expires_at=exp))
+            elif result.resource_url:
+                results.append(get_i18n_msg("upload_item_fallback", lang, filename=att.filename, resource_url=result.resource_url))
+            else:
+                errors.append(get_i18n_msg("upload_failed", lang, filename=att.filename, error=result.error or "No link"))
+
+    if not results and not errors:
+        msg = get_i18n_msg("upload_not_configured", lang)
+    elif results:
+        msg = get_i18n_msg("upload_header", lang) + "".join(results)
+        if errors:
+            msg += "\n" + "\n".join(errors)
+    else:
+        msg = "\n".join(errors)
+
+    reply = f"{message.author.mention} {msg}" if not is_dm else msg
+    await message.channel.send(reply)
 
 
 def _parse_command(text: str) -> tuple[str | None, str]:
@@ -72,12 +118,24 @@ class QURLDiscordBot(discord.Client):
         if not (is_dm or is_mention):
             return
 
-        text = message.content
+        text = message.content or ""
+        clean_text = preprocess_text(text, PLATFORM_DISCORD)
+
+        # File upload: when attachments exist
+        if message.attachments:
+            if settings.upload_api_url:
+                await _handle_file_upload(message, is_dm)
+                return
+            # Attachments but upload API not configured
+            lang = "zh" if (locale := getattr(message.author, "locale", None)) and str(locale).startswith("zh") else "en"
+            msg = get_i18n_msg("upload_not_configured", lang)
+            reply = f"{message.author.mention} {msg}" if not is_dm else msg
+            await message.channel.send(reply)
+            return
+
         if not text:
             await message.channel.send(get_empty_msg())
             return
-
-        clean_text = preprocess_text(text, PLATFORM_DISCORD)
         if not clean_text and is_mention:
             await message.channel.send("Please include your request, e.g. `google.com I need a proxy`")
             return
