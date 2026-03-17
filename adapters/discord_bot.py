@@ -92,11 +92,11 @@ class QURLDiscordBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
-        """Register slash commands."""
-        self.tree.add_command(setkey_cmd)
-        self.tree.add_command(mykey_cmd)
-        self.tree.add_command(delkey_cmd)
-        # Sync globally - can take up to 1 hour. For testing use guild-specific.
+        """Register slash commands. Discord-only mode: file upload only, no setkey/mykey/delkey."""
+        # setkey_cmd, mykey_cmd, delkey_cmd - disabled for Discord (file upload only)
+        # self.tree.add_command(setkey_cmd)
+        # self.tree.add_command(mykey_cmd)
+        # self.tree.add_command(delkey_cmd)
         await self.tree.sync()
 
     async def on_ready(self):
@@ -133,106 +133,12 @@ class QURLDiscordBot(discord.Client):
             await message.channel.send(reply)
             return
 
-        if not text:
-            await message.channel.send(get_empty_msg())
-            return
-        if not clean_text and is_mention:
-            await message.channel.send("Please include your request, e.g. `google.com I need a proxy`")
-            return
-
-        user_id = str(message.author.id)
+        # No attachments: Discord bot only supports file upload (setkey/mykey/delkey and proxy disabled)
         locale = getattr(message.author, "locale", None)
-        user_tz = get_timezone_from_discord_locale(locale)
-        if not user_tz:
-            logger.debug(f"Discord user {message.author} (id: {user_id}): timezone unavailable (locale={locale}), using UTC")
-        logger.info(
-            f"Discord {'DM' if is_dm else 'mention'} from {message.author} (id: {user_id}): {clean_text}"
-        )
-
-        cmd, arg = _parse_command(clean_text)
-        if cmd:
-            if cmd == "setkey":
-                msg, _ = await handle_setkey(user_id, arg, PLATFORM_DISCORD)
-            elif cmd == "mykey":
-                msg, _ = await handle_mykey(user_id, PLATFORM_DISCORD, user_tz=user_tz)
-            else:
-                msg, _ = await handle_delkey(user_id, PLATFORM_DISCORD)
-            if is_dm:
-                await message.channel.send(msg)
-            else:
-                await message.channel.send(f"{message.author.mention} {msg}")
-            return
-
-        if is_dm:
-            # Analyze (includes dashboard shortcut check)
-            analysis = await analyze_message(clean_text, user_id, PLATFORM_DISCORD)
-            if "dashboard" in analysis:
-                await message.channel.send(_dashboard_reply(analysis["lang"]))
-                return
-            if "error" in analysis:
-                await message.channel.send(analysis["error"])
-                return
-            reply, _ = await build_proxy_reply(
-                analysis["urls"], analysis["api_key"], analysis["expires_in"],
-                analysis["reason"], analysis["lang"], PLATFORM_DISCORD, user_id, user_tz=user_tz,
-            )
-            await message.channel.send(reply)
-        else:
-            mentioned_users = [
-                m for m in message.mentions
-                if m.id != self.user.id
-            ]
-
-            # Analyze once (AI + URL extraction)
-            analysis = await analyze_message(clean_text, user_id, PLATFORM_DISCORD)
-            if "dashboard" in analysis:
-                await message.channel.send(
-                    f"{message.author.mention} {_dashboard_reply(analysis['lang'])}"
-                )
-                return
-            if "error" in analysis:
-                await message.channel.send(
-                    f"{message.author.mention} {analysis['error']}"
-                )
-                return
-
-            lang = analysis["lang"]
-            dm_targets = mentioned_users if mentioned_users else [message.author]
-
-            success = []
-            for target in dm_targets:
-                # Generate unique proxy links per recipient
-                reply, _ = await build_proxy_reply(
-                    analysis["urls"], analysis["api_key"], analysis["expires_in"],
-                    analysis["reason"], lang, PLATFORM_DISCORD, user_id, user_tz=user_tz,
-                )
-                try:
-                    if target.id == message.author.id:
-                        await target.send(reply)
-                    else:
-                        logger.info(f"Sending proxy to Discord user {target} (id: {target.id})")
-                        header = get_i18n_msg(
-                            "dm_proxy_for_you", lang, from_user=message.author.display_name
-                        )
-                        await target.send(f"{header}\n{reply}")
-                    success.append(target)
-                except discord.Forbidden:
-                    logger.warning(f"Cannot DM Discord user {target} (id: {target.id})")
-
-            if success:
-                if mentioned_users:
-                    mentions = " ".join(u.mention for u in success)
-                    await message.channel.send(
-                        f"{message.author.mention} {get_i18n_msg('dm_sent_to_users', lang, users=mentions)}"
-                    )
-                else:
-                    await message.channel.send(
-                        f"{message.author.mention} {get_i18n_msg('dm_sent', lang)}"
-                    )
-            else:
-                await message.channel.send(
-                    f"{message.author.mention} {get_i18n_msg('dm_failed', lang)}"
-                )
+        lang = "zh" if locale and str(locale).startswith("zh") else "en"
+        hint = get_i18n_msg("upload_only_prompt", lang)
+        reply = f"{message.author.mention} {hint}" if not is_dm else hint
+        await message.channel.send(reply)
 
 
 def get_empty_msg() -> str:

@@ -56,6 +56,7 @@ MESSAGES = {
         "upload_item": "\n• 文件名: `{filename}`\n  代理链接: {qurl_link}\n  有效期: {expires_at}",
         "upload_item_fallback": "\n• 文件名: `{filename}`\n  资源链接: {resource_url}\n  (QURL 创建失败，直接链接仍可用)",
         "upload_failed": "• {filename}: 上传失败 - {error}",
+        "upload_only_prompt": "此机器人仅支持文件上传，请附带文件发送消息。",
     },
     "en": {
         "empty_input": "Please enter the URL you want to access, e.g.: `google.com I need a proxy`",
@@ -112,6 +113,7 @@ MESSAGES = {
         "upload_item": "\n• File: `{filename}`\n  Proxy link: {qurl_link}\n  Expires: {expires_at}",
         "upload_item_fallback": "\n• File: `{filename}`\n  Resource URL: {resource_url}\n  (QURL creation failed, direct link still valid)",
         "upload_failed": "• {filename}: Upload failed - {error}",
+        "upload_only_prompt": "This bot only supports file upload. Please attach a file to your message.",
     },
 }
 
