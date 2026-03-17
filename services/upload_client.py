@@ -1,4 +1,4 @@
-﻿"""Client for file upload API (POST /api/upload)."""
+"""Client for file upload API (POST /api/upload)."""
 
 import logging
 from dataclasses import dataclass
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class UploadResult:
     success: bool
     md5_hash: str | None
+    resource_id: str | None  # e.g. rkrdrn7o79c, from API when available
     resource_url: str | None
     qurl_link: str | None
     qurl_site: str | None
@@ -40,7 +41,7 @@ async def upload_file(
     base = (settings.upload_api_url or "").rstrip("/")
     if not base:
         return UploadResult(
-            success=False, md5_hash=None, resource_url=None,
+            success=False, md5_hash=None, resource_id=None, resource_url=None,
             qurl_link=None, qurl_site=None, expires_at=None,
             error="Upload API not configured (UPLOAD_API_URL)"
         )
@@ -57,6 +58,7 @@ async def upload_file(
             return UploadResult(
                 success=True,
                 md5_hash=data.get("md5_hash"),
+                resource_id=data.get("resource_id"),
                 resource_url=data.get("resource_url"),
                 qurl_link=data.get("qurl_link"),
                 qurl_site=data.get("qurl_site"),
@@ -65,14 +67,14 @@ async def upload_file(
             )
         err = data.get("error", f"HTTP {resp.status_code}")
         return UploadResult(
-            success=False, md5_hash=None, resource_url=None,
+            success=False, md5_hash=None, resource_id=None, resource_url=None,
             qurl_link=None, qurl_site=None, expires_at=None,
             error=err,
         )
     except Exception as e:
         logger.error(f"Upload API error: {e}")
         return UploadResult(
-            success=False, md5_hash=None, resource_url=None,
+            success=False, md5_hash=None, resource_id=None, resource_url=None,
             qurl_link=None, qurl_site=None, expires_at=None,
             error=str(e),
         )

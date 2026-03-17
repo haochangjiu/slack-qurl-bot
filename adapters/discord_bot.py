@@ -49,11 +49,10 @@ async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_
             if not result.success:
                 errors.append(get_i18n_msg("upload_failed", lang, filename=att.filename, error=result.error or "Unknown"))
                 continue
-            if result.qurl_link:
+            link = result.qurl_link or result.resource_url
+            if link:
                 exp = format_utc_to_local(result.expires_at, user_tz=user_tz) if result.expires_at else "-"
-                results.append(get_i18n_msg("upload_item", lang, filename=att.filename, qurl_link=result.qurl_link, expires_at=exp))
-            elif result.resource_url:
-                results.append(get_i18n_msg("upload_item_fallback", lang, filename=att.filename, resource_url=result.resource_url))
+                results.append((att.filename, result, exp, link))
             else:
                 errors.append(get_i18n_msg("upload_failed", lang, filename=att.filename, error=result.error or "No link"))
 
@@ -70,10 +69,21 @@ async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_
         await message.channel.send(reply)
         return
 
-    # Success: build success message
-    success_msg = get_i18n_msg("upload_header", lang) + "".join(results)
+    # Success: build success message (new format)
+    blocks = []
+    for filename, res, exp_display, link in results:
+        block = [
+            "?? New File Available via Qurl",
+            f"File: {filename}",
+        ]
+        if res.resource_id:
+            block.append(f"Resource ID: {res.resource_id}")
+        block.append(f"?? Qurl Access Link: {link}")
+        block.append(f"? Qurl Expiration: {exp_display}")
+        blocks.append("\n".join(block))
+    success_msg = "\n\n".join(blocks)
     if errors:
-        success_msg += "\n" + "\n".join(errors)
+        success_msg += "\n\n" + "\n".join(errors)
 
     if is_dm:
         await message.channel.send(success_msg)
