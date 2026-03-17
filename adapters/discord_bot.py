@@ -26,7 +26,7 @@ from services.time_utils import get_timezone_from_discord_locale, format_utc_to_
 from services.upload_client import upload_file
 
 
-async def _handle_file_upload(message: discord.Message, is_dm: bool) -> None:
+async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_dm: bool) -> None:
     """Download attachments, upload to API, send QURL links."""
     locale = getattr(message.author, "locale", None)
     lang = "zh" if locale and str(locale).startswith("zh") else "en"
@@ -59,15 +59,52 @@ async def _handle_file_upload(message: discord.Message, is_dm: bool) -> None:
 
     if not results and not errors:
         msg = get_i18n_msg("upload_not_configured", lang)
-    elif results:
-        msg = get_i18n_msg("upload_header", lang) + "".join(results)
-        if errors:
-            msg += "\n" + "\n".join(errors)
-    else:
-        msg = "\n".join(errors)
+        reply = f"{message.author.mention} {msg}" if not is_dm else msg
+        await message.channel.send(reply)
+        return
 
-    reply = f"{message.author.mention} {msg}" if not is_dm else msg
-    await message.channel.send(reply)
+    if not results:
+        # Failure: only output in channel, never DM anyone
+        msg = "\n".join(errors)
+        reply = f"{message.author.mention} {msg}" if not is_dm else msg
+        await message.channel.send(reply)
+        return
+
+    # Success: build success message
+    success_msg = get_i18n_msg("upload_header", lang) + "".join(results)
+    if errors:
+        success_msg += "\n" + "\n".join(errors)
+
+    if is_dm:
+        await message.channel.send(success_msg)
+        return
+
+    # In channel: DM each @mentioned user, then reply in channel
+    mentioned_users = [m for m in message.mentions if bot.user and m.id != bot.user.id]
+    dm_targets = mentioned_users if mentioned_users else [message.author]
+
+    success_dmed = []
+    for target in dm_targets:
+        try:
+            await target.send(success_msg)
+            success_dmed.append(target)
+        except discord.Forbidden:
+            logger.warning(f"Cannot DM Discord user {target} (id: {target.id})")
+
+    if success_dmed:
+        if mentioned_users:
+            mentions = " ".join(u.mention for u in success_dmed)
+            await message.channel.send(
+                f"{message.author.mention} {get_i18n_msg('dm_sent_to_users', lang, users=mentions)}"
+            )
+        else:
+            await message.channel.send(
+                f"{message.author.mention} {get_i18n_msg('dm_sent', lang)}"
+            )
+    else:
+        await message.channel.send(
+            f"{message.author.mention} {get_i18n_msg('dm_failed', lang)}"
+        )
 
 
 def _parse_command(text: str) -> tuple[str | None, str]:
@@ -124,7 +161,7 @@ class QURLDiscordBot(discord.Client):
         # File upload: when attachments exist
         if message.attachments:
             if settings.upload_api_url:
-                await _handle_file_upload(message, is_dm)
+                await _handle_file_upload(self, message, is_dm)
                 return
             # Attachments but upload API not configured
             lang = "zh" if (locale := getattr(message.author, "locale", None)) and str(locale).startswith("zh") else "en"
