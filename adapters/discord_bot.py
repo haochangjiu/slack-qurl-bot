@@ -23,7 +23,7 @@ from core.bot_core import (
     PLATFORM_DISCORD,
 )
 from services.time_utils import get_timezone_from_discord_locale, format_utc_to_local
-from services.upload_client import upload_file
+from services.upload_client import upload_file, extract_resource_id_from_url
 from services.mint_link_client import mint_links
 
 
@@ -73,12 +73,13 @@ async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_
     # Success: build success message (new format)
     blocks = []
     for filename, res, exp_display, link in results:
+        resource_id_display = res.resource_id or extract_resource_id_from_url(link)
         block = [
             "📎 New File Available via Qurl",
             f"File: {filename}",
         ]
-        if res.resource_id:
-            block.append(f"Resource ID: {res.resource_id}")
+        if resource_id_display:
+            block.append(f"Resource ID: {resource_id_display}")
         block.append(f"🔗 Qurl Access Link: {link}")
         block.append(f"⏳ Qurl Expiration: {exp_display}")
         blocks.append("\n".join(block))

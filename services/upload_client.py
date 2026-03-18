@@ -1,6 +1,7 @@
 """Client for file upload API (POST /api/upload)."""
 
 import logging
+import re
 from dataclasses import dataclass
 
 import httpx
@@ -8,6 +9,51 @@ import httpx
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_payload(data: dict) -> dict:
+    """Support both flat and nested data structure. Returns the dict to read fields from."""
+    if isinstance(data.get("data"), dict):
+        return data["data"]
+    return data
+
+
+def _get(obj: dict, *keys: str) -> str | None:
+    """Get first existing key value (supports snake_case and camelCase)."""
+    for k in keys:
+        v = obj.get(k)
+        if v is not None and v != "":
+            return str(v) if not isinstance(v, str) else v
+    return None
+
+
+def _parse_expires_at(obj: dict) -> str | None:
+    """Parse expires_at from API. Supports expires_at, expiresAt, expiration, expires; also Unix timestamp."""
+    from datetime import datetime, timezone
+
+    raw = None
+    for k in ("expires_at", "expiresAt", "expiration", "expires"):
+        v = obj.get(k)
+        if v is not None:
+            raw = v
+            break
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        try:
+            dt = datetime.fromtimestamp(float(raw), tz=timezone.utc)
+            return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        except (ValueError, OSError):
+            return None
+    return str(raw)
+
+
+def extract_resource_id_from_url(url: str | None) -> str | None:
+    """Extract resource_id from resource_url, e.g. .../resources/a173b247... -> a173b247..."""
+    if not url:
+        return None
+    m = re.search(r"/resources/([a-zA-Z0-9_-]+)", url)
+    return m.group(1) if m else None
 
 
 @dataclass
@@ -54,15 +100,22 @@ async def upload_file(
             resp = await client.post(url, files=files)
             data = resp.json() if resp.content else {}
 
-        if resp.status_code == 200 and data.get("success"):
+        if resp.status_code in (200, 201) and data.get("success"):
+            payload = _extract_payload(data)
+            resource_url = _get(payload, "resource_url", "resourceUrl")
+            qurl_link = _get(payload, "qurl_link", "qurlLink")
+            link = qurl_link or resource_url
+            resource_id = _get(payload, "resource_id", "resourceId")
+            if not resource_id and link:
+                resource_id = extract_resource_id_from_url(link)
             return UploadResult(
                 success=True,
-                md5_hash=data.get("md5_hash"),
-                resource_id=data.get("resource_id"),
-                resource_url=data.get("resource_url"),
-                qurl_link=data.get("qurl_link"),
-                qurl_site=data.get("qurl_site"),
-                expires_at=data.get("expires_at"),
+                md5_hash=_get(payload, "md5_hash", "md5Hash"),
+                resource_id=resource_id,
+                resource_url=resource_url,
+                qurl_link=qurl_link,
+                qurl_site=_get(payload, "qurl_site", "qurlSite"),
+                expires_at=_parse_expires_at(payload),
                 error=data.get("error"),
             )
         err = data.get("error", f"HTTP {resp.status_code}")
