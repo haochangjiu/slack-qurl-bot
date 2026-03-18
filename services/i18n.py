@@ -57,6 +57,10 @@ MESSAGES = {
         "upload_item_fallback": "\n• 文件名: `{filename}`\n  资源链接: {resource_url}\n  (QURL 创建失败，直接链接仍可用)",
         "upload_failed": "• {filename}: 上传失败 - {error}",
         "upload_only_prompt": "此机器人仅支持文件上传，请附带文件发送消息。",
+        "upload_channel_disabled": "请在私信中上传文件，频道中不支持文件上传。",
+        "mint_link_prompt": "在频道中请输入 resource_id 生成访问链接，例如：`@Qurl bot rkrdrn7o79c`",
+        "mint_link_no_resource_id": "未检测到 resource_id，请发送上传文件后返回的 Resource ID。",
+        "mint_link_error": "生成链接失败: {error}",
     },
     "en": {
         "empty_input": "Please enter the URL you want to access, e.g.: `google.com I need a proxy`",
@@ -114,6 +118,10 @@ MESSAGES = {
         "upload_item_fallback": "\n• File: `{filename}`\n  Resource URL: {resource_url}\n  (QURL creation failed, direct link still valid)",
         "upload_failed": "• {filename}: Upload failed - {error}",
         "upload_only_prompt": "This bot only supports file upload. Please attach a file to your message.",
+        "upload_channel_disabled": "Please upload files via DM. File upload is not allowed in channels.",
+        "mint_link_prompt": "In channel, provide resource_id to generate links, e.g. `@Qurl bot rkrdrn7o79c`",
+        "mint_link_no_resource_id": "No resource_id detected. Please send the Resource ID from the upload response.",
+        "mint_link_error": "Failed to generate link: {error}",
     },
 }
 

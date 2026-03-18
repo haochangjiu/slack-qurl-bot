@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # File upload API (Discord file upload to QURL)
     upload_api_url: str | None = None  # e.g. http://localhost:8080
 
+    # Mint link API base URL (address before /{resource_id}), e.g. https://get.qurl.link/api/mint_link
+    mint_link_api_url: str = "https://get.qurl.link/api/mint_link"
+
     class Config:
         env_file = ".env"
 

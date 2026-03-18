@@ -22,8 +22,9 @@ from core.bot_core import (
     preprocess_text,
     PLATFORM_DISCORD,
 )
-from services.time_utils import get_timezone_from_discord_locale, format_utc_to_local, format_expires_in_display
+from services.time_utils import get_timezone_from_discord_locale, format_utc_to_local
 from services.upload_client import upload_file
+from services.mint_link_client import mint_links
 
 
 async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_dm: bool) -> None:
@@ -73,13 +74,13 @@ async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_
     blocks = []
     for filename, res, exp_display, link in results:
         block = [
-            "?? New File Available via Qurl",
+            "📎 New File Available via Qurl",
             f"File: {filename}",
         ]
         if res.resource_id:
             block.append(f"Resource ID: {res.resource_id}")
-        block.append(f"?? Qurl Access Link: {link}")
-        block.append(f"? Qurl Expiration: {exp_display}")
+        block.append(f"🔗 Qurl Access Link: {link}")
+        block.append(f"⏳ Qurl Expiration: {exp_display}")
         blocks.append("\n".join(block))
     success_msg = "\n\n".join(blocks)
     if errors:
@@ -95,6 +96,86 @@ async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_
 
     success_dmed = []
     for target in dm_targets:
+        try:
+            await target.send(success_msg)
+            success_dmed.append(target)
+        except discord.Forbidden:
+            logger.warning(f"Cannot DM Discord user {target} (id: {target.id})")
+
+    if success_dmed:
+        if mentioned_users:
+            mentions = " ".join(u.mention for u in success_dmed)
+            await message.channel.send(
+                f"{message.author.mention} {get_i18n_msg('dm_sent_to_users', lang, users=mentions)}"
+            )
+        else:
+            await message.channel.send(
+                f"{message.author.mention} {get_i18n_msg('dm_sent', lang)}"
+            )
+    else:
+        await message.channel.send(
+            f"{message.author.mention} {get_i18n_msg('dm_failed', lang)}"
+        )
+
+
+def _extract_resource_id(text: str) -> str | None:
+    """Extract resource_id from message. Supports res_xxx or alphanumeric 8-20 chars."""
+    if not text or not text.strip():
+        return None
+    # res_abc123 format
+    m = re.search(r"res_[a-zA-Z0-9]+", text, re.IGNORECASE)
+    if m:
+        return m.group()
+    # rkrdrn7o79c format (8-20 alphanumeric)
+    m = re.search(r"\b[a-zA-Z0-9]{8,20}\b", text)
+    return m.group() if m else None
+
+
+async def _handle_mint_link(bot: discord.Client, message: discord.Message) -> None:
+    """Generate qurl links from resource_id in channel, DM each recipient."""
+    locale = getattr(message.author, "locale", None)
+    lang = "zh" if locale and str(locale).startswith("zh") else "en"
+    user_tz = get_timezone_from_discord_locale(locale)
+
+    clean_text = preprocess_text(message.content or "", PLATFORM_DISCORD)
+    resource_id = _extract_resource_id(clean_text)
+
+    if not resource_id:
+        hint = get_i18n_msg("mint_link_no_resource_id", lang)
+        await message.channel.send(f"{message.author.mention} {hint}")
+        return
+
+    mentioned_users = [m for m in message.mentions if bot.user and m.id != bot.user.id]
+    dm_targets = mentioned_users if mentioned_users else [message.author]
+    n = len(dm_targets)
+
+    result = await mint_links(resource_id, n=n)
+
+    if not result.success:
+        err_msg = get_i18n_msg("mint_link_error", lang, error=result.error or "Unknown")
+        await message.channel.send(f"{message.author.mention} {err_msg}")
+        return
+
+    links = result.links
+    if len(links) < n:
+        n = len(links)
+
+    success_dmed = []
+    for i, target in enumerate(dm_targets):
+        if i >= len(links):
+            break
+        item = links[i]
+        qurl_link = item.get("qurl_link")
+        expires_at = item.get("expires_at")
+        if not qurl_link:
+            continue
+        exp_display = format_utc_to_local(expires_at, user_tz=user_tz) if expires_at else "-"
+        block = [
+            "📎 Link Generated via Qurl",
+            f"🔗 Qurl Access Link: {qurl_link}",
+            f"⏳ Qurl Expiration: {exp_display}",
+        ]
+        success_msg = "\n".join(block)
         try:
             await target.send(success_msg)
             success_dmed.append(target)
@@ -167,25 +248,36 @@ class QURLDiscordBot(discord.Client):
 
         text = message.content or ""
         clean_text = preprocess_text(text, PLATFORM_DISCORD)
-
-        # File upload: when attachments exist
-        if message.attachments:
-            if settings.upload_api_url:
-                await _handle_file_upload(self, message, is_dm)
-                return
-            # Attachments but upload API not configured
-            lang = "zh" if (locale := getattr(message.author, "locale", None)) and str(locale).startswith("zh") else "en"
-            msg = get_i18n_msg("upload_not_configured", lang)
-            reply = f"{message.author.mention} {msg}" if not is_dm else msg
-            await message.channel.send(reply)
-            return
-
-        # No attachments: Discord bot only supports file upload (setkey/mykey/delkey and proxy disabled)
         locale = getattr(message.author, "locale", None)
         lang = "zh" if locale and str(locale).startswith("zh") else "en"
+
+        # Channel: no file upload, only resource_id -> mint_link
+        if not is_dm:
+            if message.attachments:
+                msg = get_i18n_msg("upload_channel_disabled", lang)
+                await message.channel.send(f"{message.author.mention} {msg}")
+                return
+            # Channel: try resource_id to generate links
+            resource_id = _extract_resource_id(clean_text)
+            if resource_id:
+                await _handle_mint_link(self, message)
+                return
+            hint = get_i18n_msg("mint_link_prompt", lang)
+            await message.channel.send(f"{message.author.mention} {hint}")
+            return
+
+        # DM: file upload when attachments exist
+        if message.attachments:
+            if settings.upload_api_url:
+                await _handle_file_upload(self, message, is_dm=True)
+                return
+            msg = get_i18n_msg("upload_not_configured", lang)
+            await message.channel.send(msg)
+            return
+
+        # DM, no attachments
         hint = get_i18n_msg("upload_only_prompt", lang)
-        reply = f"{message.author.mention} {hint}" if not is_dm else hint
-        await message.channel.send(reply)
+        await message.channel.send(hint)
 
 
 def get_empty_msg() -> str:
