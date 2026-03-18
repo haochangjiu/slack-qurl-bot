@@ -120,15 +120,19 @@ async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_
 
 
 def _extract_resource_id(text: str) -> str | None:
-    """Extract resource_id from message. Supports res_xxx or alphanumeric 8-20 chars."""
+    """Extract resource_id from message. Supports res_xxx, md5/sha hashes (32/64 hex), or 8-64 alphanumeric."""
     if not text or not text.strip():
         return None
     # res_abc123 format
     m = re.search(r"res_[a-zA-Z0-9]+", text, re.IGNORECASE)
     if m:
         return m.group()
-    # rkrdrn7o79c format (8-20 alphanumeric)
-    m = re.search(r"\b[a-zA-Z0-9]{8,20}\b", text)
+    # hex hash (e.g. md5 32, sha256 64)
+    m = re.search(r"\b[a-fA-F0-9]{32,64}\b", text)
+    if m:
+        return m.group()
+    # rkrdrn7o79c format (8-64 alphanumeric)
+    m = re.search(r"\b[a-zA-Z0-9]{8,64}\b", text)
     return m.group() if m else None
 
 
