@@ -46,7 +46,8 @@ async def mint_links(
         payload["expires_at"] = expires_at
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        # verify=False bypasses SSL certificate validation (use only when server cert has issues)
+        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
             resp = await client.post(url, json=payload or {})
 
         if resp.status_code != 200:
