@@ -130,8 +130,8 @@ def _extract_resource_id(text: str) -> str | None:
     """
     if not text or not text.strip():
         return None
-    # r_abc123def format — r_ prefix, 8-64 chars after, lowercase + digits
-    m = re.search(r"\br_[a-z0-9]{8,64}\b", text)
+    # r_abc123_def format — r_ prefix, lowercase + digits + underscores (8-64 chars)
+    m = re.search(r"\br_[a-z0-9_]{8,64}\b", text)
     if m:
         return m.group()
     # res_abc123 format
