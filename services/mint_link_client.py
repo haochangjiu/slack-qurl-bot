@@ -26,7 +26,7 @@ async def mint_links(
     Create qurl links from resource_id.
 
     Args:
-        resource_id: QURL resource ID (e.g. rkrdrn7o79c or res_abc123)
+        resource_id: QURL resource ID (e.g. r_gjjpq8hapvq, rkrdrn7o79c, res_abc123)
         n: Number of links to create (1-10), default 1
         expires_at: ISO 8601 expiry (optional)
 

@@ -120,20 +120,29 @@ async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_
 
 
 def _extract_resource_id(text: str) -> str | None:
-    """Extract resource_id from message. Supports res_xxx, md5/sha hashes (32/64 hex), or 8-64 alphanumeric."""
+    """
+    Extract resource_id from message text.
+
+    Supports formats:
+      - r_abc123def          (r_ prefix, 8-32 lowercase alphanumeric after)
+      - res_abc123           (res_ prefix, lowercase alphanumeric)
+      - hex hash (32 or 64 chars) for backwards compat
+    """
     if not text or not text.strip():
         return None
-    # res_abc123 format
-    m = re.search(r"res_[a-zA-Z0-9]+", text, re.IGNORECASE)
+    # r_abc123def format — r_ prefix, 8-64 chars after, lowercase + digits
+    m = re.search(r"\br_[a-z0-9]{8,64}\b", text)
     if m:
         return m.group()
-    # hex hash (e.g. md5 32, sha256 64)
+    # res_abc123 format
+    m = re.search(r"\bres_[a-zA-Z0-9]+\b", text, re.IGNORECASE)
+    if m:
+        return m.group()
+    # hex hash (md5 32, sha256 64)
     m = re.search(r"\b[a-fA-F0-9]{32,64}\b", text)
     if m:
         return m.group()
-    # rkrdrn7o79c format (8-64 alphanumeric)
-    m = re.search(r"\b[a-zA-Z0-9]{8,64}\b", text)
-    return m.group() if m else None
+    return None
 
 
 async def _handle_mint_link(bot: discord.Client, message: discord.Message) -> None:
