@@ -27,6 +27,7 @@ from services.upload_client import upload_file, upload_google_map, extract_resou
 from services.mint_link_client import mint_links
 
 _GOOGLE_MAPS_PATTERN = re.compile(r"https://maps\.app\.goo\.gl/[^\s<>)\]\"']+", re.IGNORECASE)
+_GOOGLE_MAPS_EMBED_PATTERN = re.compile(r"https://www\.google\.com/maps/embed[^\s<>)\]\"']+", re.IGNORECASE)
 
 
 async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_dm: bool) -> None:
@@ -306,6 +307,7 @@ class QURLDiscordBot(discord.Client):
         # self.tree.add_command(setkey_cmd)
         # self.tree.add_command(mykey_cmd)
         # self.tree.add_command(delkey_cmd)
+        self.tree.add_command(qurl_group)
         await self.tree.sync()
 
     async def on_ready(self):
@@ -358,8 +360,17 @@ class QURLDiscordBot(discord.Client):
 
         # DM: check for Google Maps URL
         google_map_match = _GOOGLE_MAPS_PATTERN.search(message.content or "")
+        google_maps_embed_match = _GOOGLE_MAPS_EMBED_PATTERN.search(message.content or "")
         if google_map_match and settings.upload_api_url:
             await _handle_google_map_upload(self, message, google_map_match.group(), is_dm=True)
+            return
+        if google_maps_embed_match and settings.upload_api_url:
+            await _handle_google_map_upload(self, message, google_maps_embed_match.group(), is_dm=True)
+            return
+
+        # DM: check for /qurl help command
+        if re.search(r"^/qurl\s+help\b", text, re.IGNORECASE):
+            await message.channel.send(_QURL_HELP_MSG)
             return
 
         # DM, no attachments and no Google Map
@@ -402,6 +413,33 @@ async def delkey_cmd(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     msg, _ = await handle_delkey(str(interaction.user.id), PLATFORM_DISCORD)
     await interaction.followup.send(msg, ephemeral=True)
+
+
+_QURL_HELP_MSG = """📖 Qurl Bot — Help
+
+DM a file to @QurlBot to protect it. You'll receive a
+resource_id and a secure link back.
+
+To send individual links to users in a server:
+  @QurlBot #<resource_id> @user1 @user2 ...
+
+Slash commands:
+  /qurl list              — list your protected files
+  /qurl status <id>       — check link usage for a file
+  /qurl revoke <id>       — revoke a file and all its links
+  /qurl help              — show this message
+
+Each recipient receives their own unique, single-use link
+by DM. Links self-destruct on access."""
+
+
+@app_commands.command(name="help", description="Show help and usage instructions")
+async def help_cmd(interaction: discord.Interaction):
+    await interaction.response.send_message(_QURL_HELP_MSG)
+
+
+qurl_group = app_commands.Group(name="qurl", description="Qurl Bot commands")
+qurl_group.add_command(help_cmd)
 
 
 def run_discord_bot():
