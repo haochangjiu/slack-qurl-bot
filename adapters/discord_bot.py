@@ -191,14 +191,14 @@ def _extract_resource_id(text: str) -> str | None:
     Extract resource_id from message text.
 
     Supports formats:
-      - r_abc123def          (r_ prefix, 8-32 lowercase alphanumeric after)
+      - r_abc123-def          (r_ prefix, 8-64 lowercase alphanumeric + underscores + hyphens after)
       - res_abc123           (res_ prefix, lowercase alphanumeric)
       - hex hash (32 or 64 chars) for backwards compat
     """
     if not text or not text.strip():
         return None
-    # r_abc123_def format — r_ prefix, lowercase + digits + underscores (8-64 chars)
-    m = re.search(r"\br_[a-z0-9_]{8,64}\b", text)
+    # r_abc123_def format — r_ prefix, lowercase + digits + underscores + hyphens (8-64 chars)
+    m = re.search(r"\br_[a-z0-9_-]{8,64}\b", text)
     if m:
         return m.group()
     # res_abc123 format
