@@ -1,5 +1,6 @@
 """Client for file upload API (POST /api/upload)."""
 
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -126,6 +127,75 @@ async def upload_file(
         )
     except Exception as e:
         logger.error(f"Upload API error: {e}")
+        return UploadResult(
+            success=False, md5_hash=None, resource_id=None, resource_url=None,
+            qurl_link=None, qurl_site=None, expires_at=None,
+            error=str(e),
+        )
+
+
+async def upload_google_map(url: str) -> UploadResult:
+    """
+    Upload Google Map link as JSON to the upload API.
+
+    Args:
+        url: Google Maps URL (e.g. https://maps.app.goo.gl/V2F1h99QVgLEueA37)
+
+    Returns:
+        UploadResult with qurl_link, resource_url, etc.
+    """
+    base = (settings.upload_api_url or "").rstrip("/")
+    if not base:
+        return UploadResult(
+            success=False, md5_hash=None, resource_id=None, resource_url=None,
+            qurl_link=None, qurl_site=None, expires_at=None,
+            error="Upload API not configured (UPLOAD_API_URL)"
+        )
+
+    upload_url = f"{base}/api/upload"
+    payload = {
+        "type": "google-map",
+        "url": url,
+    }
+    files = {
+        "file": (
+            "google-map.json",
+            json.dumps(payload).encode("utf-8"),
+            "application/json",
+        )
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(upload_url, files=files)
+            data = resp.json() if resp.content else {}
+
+        if resp.status_code in (200, 201) and data.get("success"):
+            payload = _extract_payload(data)
+            resource_url = _get(payload, "resource_url", "resourceUrl")
+            qurl_link = _get(payload, "qurl_link", "qurlLink")
+            link = qurl_link or resource_url
+            resource_id = _get(payload, "resource_id", "resourceId")
+            if not resource_id and link:
+                resource_id = extract_resource_id_from_url(link)
+            return UploadResult(
+                success=True,
+                md5_hash=_get(payload, "md5_hash", "md5Hash"),
+                resource_id=resource_id,
+                resource_url=resource_url,
+                qurl_link=qurl_link,
+                qurl_site=_get(payload, "qurl_site", "qurlSite"),
+                expires_at=_parse_expires_at(payload),
+                error=data.get("error"),
+            )
+        err = data.get("error", f"HTTP {resp.status_code}")
+        return UploadResult(
+            success=False, md5_hash=None, resource_id=None, resource_url=None,
+            qurl_link=None, qurl_site=None, expires_at=None,
+            error=err,
+        )
+    except Exception as e:
+        logger.error(f"Upload Google Map API error: {e}")
         return UploadResult(
             success=False, md5_hash=None, resource_id=None, resource_url=None,
             qurl_link=None, qurl_site=None, expires_at=None,

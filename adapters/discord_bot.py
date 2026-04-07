@@ -23,8 +23,10 @@ from core.bot_core import (
     PLATFORM_DISCORD,
 )
 from services.time_utils import get_timezone_from_discord_locale, format_utc_to_local
-from services.upload_client import upload_file, extract_resource_id_from_url
+from services.upload_client import upload_file, upload_google_map, extract_resource_id_from_url
 from services.mint_link_client import mint_links
+
+_GOOGLE_MAPS_PATTERN = re.compile(r"https://maps\.app\.goo\.gl/[^\s<>)\]\"']+", re.IGNORECASE)
 
 
 async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_dm: bool) -> None:
@@ -92,6 +94,71 @@ async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_
         return
 
     # In channel: DM each @mentioned user, then reply in channel
+    mentioned_users = [m for m in message.mentions if bot.user and m.id != bot.user.id]
+    dm_targets = mentioned_users if mentioned_users else [message.author]
+
+    success_dmed = []
+    for target in dm_targets:
+        try:
+            await target.send(success_msg)
+            success_dmed.append(target)
+        except discord.Forbidden:
+            logger.warning(f"Cannot DM Discord user {target} (id: {target.id})")
+
+    if success_dmed:
+        if mentioned_users:
+            mentions = " ".join(u.mention for u in success_dmed)
+            await message.channel.send(
+                f"{message.author.mention} {get_i18n_msg('dm_sent_to_users', lang, users=mentions)}"
+            )
+        else:
+            await message.channel.send(
+                f"{message.author.mention} {get_i18n_msg('dm_sent', lang)}"
+            )
+    else:
+        await message.channel.send(
+            f"{message.author.mention} {get_i18n_msg('dm_failed', lang)}"
+        )
+
+
+async def _handle_google_map_upload(bot: discord.Client, message: discord.Message, google_map_url: str, is_dm: bool) -> None:
+    """Upload Google Maps URL as JSON, send QURL links."""
+    locale = getattr(message.author, "locale", None)
+    lang = "zh" if locale and str(locale).startswith("zh") else "en"
+    user_tz = get_timezone_from_discord_locale(locale)
+
+    result = await upload_google_map(google_map_url)
+    if not result.success:
+        msg = get_i18n_msg("google_map_upload_failed", lang, url=google_map_url, error=result.error or "Unknown")
+        reply = f"{message.author.mention} {msg}" if not is_dm else msg
+        await message.channel.send(reply)
+        return
+
+    link = result.qurl_link or result.resource_url
+    if not link:
+        msg = get_i18n_msg("google_map_upload_failed", lang, url=google_map_url, error="No link")
+        reply = f"{message.author.mention} {msg}" if not is_dm else msg
+        await message.channel.send(reply)
+        return
+
+    resource_id_display = result.resource_id or extract_resource_id_from_url(link)
+    exp = format_utc_to_local(result.expires_at, user_tz=user_tz) if result.expires_at else "-"
+
+    block = [
+        "🗺️ New Google Map Available via Qurl",
+        f"Type: google-map",
+        f"URL: {google_map_url}",
+    ]
+    if resource_id_display:
+        block.append(f"Resource ID: {resource_id_display}")
+    block.append(f"🔗 Qurl Access Link: {link}")
+    block.append(f"⏳ Qurl Expiration: {exp}")
+    success_msg = "\n".join(block)
+
+    if is_dm:
+        await message.channel.send(success_msg)
+        return
+
     mentioned_users = [m for m in message.mentions if bot.user and m.id != bot.user.id]
     dm_targets = mentioned_users if mentioned_users else [message.author]
 
@@ -289,7 +356,13 @@ class QURLDiscordBot(discord.Client):
             await message.channel.send(msg)
             return
 
-        # DM, no attachments
+        # DM: check for Google Maps URL
+        google_map_match = _GOOGLE_MAPS_PATTERN.search(message.content or "")
+        if google_map_match and settings.upload_api_url:
+            await _handle_google_map_upload(self, message, google_map_match.group(), is_dm=True)
+            return
+
+        # DM, no attachments and no Google Map
         hint = get_i18n_msg("upload_only_prompt", lang)
         await message.channel.send(hint)
 

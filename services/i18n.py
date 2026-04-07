@@ -61,6 +61,8 @@ MESSAGES = {
         "mint_link_prompt": "在频道中请输入 resource_id 生成访问链接，例如：`@Qurl bot rkrdrn7o79c`",
         "mint_link_no_resource_id": "未检测到 resource_id，请发送上传文件后返回的 Resource ID。",
         "mint_link_error": "生成链接失败: {error}",
+        # Google Maps upload
+        "google_map_upload_failed": "⚠️ Google Maps 上传失败: {error}",
     },
     "en": {
         "empty_input": "Please enter the URL you want to access, e.g.: `google.com I need a proxy`",
@@ -122,6 +124,8 @@ MESSAGES = {
         "mint_link_prompt": "In channel, provide resource_id to generate links, e.g. `@Qurl bot rkrdrn7o79c`",
         "mint_link_no_resource_id": "No resource_id detected. Please send the Resource ID from the upload response.",
         "mint_link_error": "Failed to generate link: {error}",
+        # Google Maps upload
+        "google_map_upload_failed": "⚠️ Google Maps upload failed: {error}",
     },
 }
 
