@@ -196,7 +196,7 @@ async def build_proxy_reply(
                 or f"Generated via {platform} bot for user {user_id}",
             )
             if user_tz:
-                expires_display = format_utc_to_local(qurl_response.expires_at, user_tz=user_tz)
+                expires_display = format_utc_to_local(qurl_response.expires_at, user_tz=user_tz, include_tz_label=False)
             else:
                 expires_display = format_expires_in_display(expires_in, lang)
             results.append(
@@ -295,7 +295,7 @@ async def handle_mykey(
     key_info = user_store.get_key_info(kid)
     if key_info:
         created_at = (
-            format_utc_to_local(key_info["created_at"], user_tz=user_tz)
+            format_utc_to_local(key_info["created_at"], user_tz=user_tz, include_tz_label=False)
             if key_info.get("created_at")
             else key_info.get("created_at", "-")
         )

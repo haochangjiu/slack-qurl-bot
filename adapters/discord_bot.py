@@ -133,7 +133,7 @@ async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_
 
             link = result.qurl_link or result.resource_url
             if link:
-                exp = format_utc_to_local(result.expires_at, user_tz=user_tz) if result.expires_at else "-"
+                exp = format_utc_to_local(result.expires_at, user_tz=user_tz, include_tz_label=False) if result.expires_at else "-"
                 results.append((att.filename, result, exp, link))
             else:
                 errors.append(get_i18n_msg("upload_failed", lang, filename=att.filename, error=result.error or "No link"))
@@ -243,7 +243,7 @@ async def _handle_google_map_upload(bot: discord.Client, message: discord.Messag
         )
 
     resource_id_display = result.resource_id or extract_resource_id_from_url(link)
-    exp = format_utc_to_local(result.expires_at, user_tz=user_tz) if result.expires_at else "-"
+    exp = format_utc_to_local(result.expires_at, user_tz=user_tz, include_tz_label=False) if result.expires_at else "-"
 
     block = [
         "🗺️ New Google Map Available via Qurl",
@@ -311,7 +311,7 @@ def _extract_resource_id(text: str) -> str | None:
     return None
 
 
-async def _handle_mint_link(bot: discord.Client, message: discord.Message) -> None:
+async def _handle_mint_link(bot: discord.Client, message: discord.Message, is_dm: bool) -> None:
     """Generate qurl links from resource_id in channel, DM each recipient."""
     locale = getattr(message.author, "locale", None)
     lang = "zh" if locale and str(locale).startswith("zh") else "en"
@@ -346,12 +346,13 @@ async def _handle_mint_link(bot: discord.Client, message: discord.Message) -> No
                 if lang == "zh"
                 else f"⚠️ You are not the owner of resource `{resource_id}`. Only the uploader can distribute this resource."
             )
-        # 私信说明原因
-        try:
-            await message.author.send(err_msg)
-        except discord.Forbidden:
-            pass
-        await message.channel.send(f"{message.author.mention} {err_msg}")
+        # 私信说明原因（仅在频道场景下额外发私信，DM 场景不重复发送）
+        if not is_dm:
+            try:
+                await message.author.send(err_msg)
+            except discord.Forbidden:
+                pass
+        await message.channel.send(f"{message.author.mention} {err_msg}" if not is_dm else err_msg)
         return
 
     mentioned_users = [m for m in message.mentions if bot.user and m.id != bot.user.id]
@@ -379,7 +380,7 @@ async def _handle_mint_link(bot: discord.Client, message: discord.Message) -> No
         if not qurl_link:
             continue
 
-        exp_display = format_utc_to_local(expires_at, user_tz=user_tz) if expires_at else "-"
+        exp_display = format_utc_to_local(expires_at, user_tz=user_tz, include_tz_label=False) if expires_at else "-"
         block = [
             "📎 Link Generated via Qurl",
             f"🔗 Qurl Access Link: {qurl_link}",
@@ -479,7 +480,7 @@ class QURLDiscordBot(discord.Client):
             # Channel: try resource_id to generate links
             resource_id = _extract_resource_id(clean_text)
             if resource_id:
-                await _handle_mint_link(self, message)
+                await _handle_mint_link(self, message, is_dm=False)
                 return
             hint = get_i18n_msg("mint_link_prompt", lang)
             await message.channel.send(f"{message.author.mention} {hint}")
@@ -487,7 +488,7 @@ class QURLDiscordBot(discord.Client):
 
         # DM: check for resource_id first (mint link, with ownership check)
         if _extract_resource_id(clean_text):
-            await _handle_mint_link(self, message)
+            await _handle_mint_link(self, message, is_dm=True)
             return
 
         # DM: file upload when attachments exist
@@ -594,6 +595,7 @@ async def qurl_list_cmd(interaction: discord.Interaction):
     discord_name = _discord_name(interaction.user)
     locale = getattr(interaction.user, "locale", None)
     lang = "zh" if locale and str(locale).startswith("zh") else "en"
+    user_tz = get_timezone_from_discord_locale(locale)
 
     resources = list_resources_by_owner(discord_id, discord_name)
 
@@ -609,17 +611,20 @@ async def qurl_list_cmd(interaction: discord.Interaction):
     for r in resources:
         rid = r.get("resource_id", "?")
         ftype = r.get("file_type", "file")
-        created = r.get("created_at", "-")
-        exp = r.get("expires_at", None)
+        created_raw = r.get("created_at", "-")
+        exp_raw = r.get("expires_at", None)
+
+        created = format_utc_to_local(created_raw, user_tz=user_tz, include_tz_label=False) if created_raw != "-" else "-"
+        exp_display = format_utc_to_local(exp_raw, user_tz=user_tz, include_tz_label=False) if exp_raw else "-"
 
         if lang == "zh":
-            type_label = "🗺️ Google 地图" if ftype == "google-map" else "📎 文件"
-            exp_display = f" | ⏳ {exp}" if exp else " | ⏳ 不过期"
-            lines.append(f"**{rid}**\n  {type_label} | 上传于 {created}{exp_display}")
+            type_label = "Google 地图" if ftype == "google-map" else "文件"
+            exp_suffix = f" | {exp_display}" if exp_display != "-" else " | 不过期"
+            lines.append(f"ResourceID: {rid}\n Details: {type_label} | 上传于 {created}{exp_suffix}")
         else:
-            type_label = "🗺️ Google Map" if ftype == "google-map" else "📎 File"
-            exp_display = f" | ⏳ {exp}" if exp else " | ⏳ No expiry"
-            lines.append(f"**{rid}**\n  {type_label} | Uploaded {created}{exp_display}")
+            type_label = "Google Map" if ftype == "google-map" else "File"
+            exp_suffix = f" | {exp_display}" if exp_display != "-" else " | No expiry"
+            lines.append(f"ResourceID: {rid}\n Details: {type_label} | Uploaded {created}{exp_suffix}")
 
     header = "📂 你的上传记录" if lang == "zh" else "📂 Your Uploads"
     body = "\n\n".join(lines)
@@ -642,6 +647,7 @@ async def qurl_status_cmd(interaction: discord.Interaction, resource_id: str):
     discord_name = _discord_name(interaction.user)
     locale = getattr(interaction.user, "locale", None)
     lang = "zh" if locale and str(locale).startswith("zh") else "en"
+    user_tz = get_timezone_from_discord_locale(locale)
 
     # 权限检查
     if not is_owner(resource_id, discord_id, discord_name):
@@ -665,29 +671,32 @@ async def qurl_status_cmd(interaction: discord.Interaction, resource_id: str):
 
     # 构建资源信息
     ftype = res.get("file_type", "file")
-    created = res.get("created_at", "-")
-    exp = res.get("expires_at", None)
+    created_raw = res.get("created_at", "-")
+    exp_raw = res.get("expires_at", None)
     uploader_name = res.get("discord_name", "-")
+
+    created = format_utc_to_local(created_raw, user_tz=user_tz, include_tz_label=False) if created_raw != "-" else "-"
+    exp_display = format_utc_to_local(exp_raw, user_tz=user_tz, include_tz_label=False) if exp_raw else "-"
 
     if lang == "zh":
         type_label = "🗺️ Google 地图" if ftype == "google-map" else "📎 文件"
-        exp_display = exp if exp else "不过期"
+        exp_str = exp_display if exp_raw else "不过期"
         header = f"📊 资源状态 — `{resource_id}`"
         meta = [
             f"类型: {type_label}",
             f"上传者: {uploader_name}",
             f"上传时间: {created}",
-            f"过期时间: {exp_display}",
+            f"过期时间: {exp_str}",
         ]
     else:
         type_label = "🗺️ Google Map" if ftype == "google-map" else "📎 File"
-        exp_display = exp if exp else "No expiry"
+        exp_str = exp_display if exp_raw else "No expiry"
         header = f"📊 Resource Status — `{resource_id}`"
         meta = [
             f"Type: {type_label}",
             f"Uploader: {uploader_name}",
             f"Uploaded: {created}",
-            f"Expires: {exp_display}",
+            f"Expires: {exp_str}",
         ]
 
     # 构建链接列表
@@ -696,8 +705,12 @@ async def qurl_status_cmd(interaction: discord.Interaction, resource_id: str):
         for link in mint_links:
             lnk = link.get("qurl_link", "?")
             recipient = link.get("discord_name", "?")
-            minted = link.get("minted_at", "-")
-            link_exp = link.get("expires_at", "-")
+            minted_raw = link.get("minted_at", "-")
+            link_exp_raw = link.get("expires_at", "-")
+
+            minted = format_utc_to_local(minted_raw, user_tz=user_tz, include_tz_label=False) if minted_raw != "-" else "-"
+            link_exp = format_utc_to_local(link_exp_raw, user_tz=user_tz, include_tz_label=False) if link_exp_raw != "-" else "-"
+
             if lang == "zh":
                 link_lines.append(
                     f"  • {lnk}\n    接收人: {recipient} | 生成时间: {minted} | 链接过期: {link_exp}"
