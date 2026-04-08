@@ -1,5 +1,6 @@
 """Client for file upload API (POST /api/upload)."""
 
+import hashlib
 import json
 import logging
 import re
@@ -154,6 +155,10 @@ async def upload_google_map(url: str) -> UploadResult:
     # Use the resolved embed URL for upload
     upload_url: str = resolved.embed_url or resolved.resolved_url or url
 
+    # MD5 hash of the original URL (as input to bot) -> filename
+    url_md5 = hashlib.md5(url.encode("utf-8")).hexdigest()
+    upload_filename = f"{url_md5}.json"
+
     base = (settings.upload_api_url or "").rstrip("/")
     if not base:
         return UploadResult(
@@ -178,7 +183,7 @@ async def upload_google_map(url: str) -> UploadResult:
     logger.info(f"[upload_google_map] Uploading Google Maps URL | resolved embed: {upload_url} | payload: {json.dumps(upload_payload)}")
     files = {
         "file": (
-            "google-map.json",
+            upload_filename,
             json.dumps(upload_payload).encode("utf-8"),
             "application/json",
         )

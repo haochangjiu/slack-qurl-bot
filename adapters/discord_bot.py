@@ -24,7 +24,6 @@ from core.bot_core import (
 )
 from services.time_utils import get_timezone_from_discord_locale, format_utc_to_local
 from services.upload_client import upload_file, upload_google_map, extract_resource_id_from_url
-from services.google_maps_resolver import resolve_google_map
 from services.mint_link_client import mint_links
 
 _GOOGLE_MAPS_PATTERN = re.compile(r"https://maps\.app\.goo\.gl/[^\s<>)\]\"']+", re.IGNORECASE)
@@ -129,11 +128,8 @@ async def _handle_google_map_upload(bot: discord.Client, message: discord.Messag
     lang = "zh" if locale and str(locale).startswith("zh") else "en"
     user_tz = get_timezone_from_discord_locale(locale)
 
-    # Step 1: Resolve short URL to embed URL (for display)
-    resolved = await resolve_google_map(google_map_url)
-    display_url = resolved.embed_url or resolved.resolved_url or google_map_url
-
-    # Step 2: Upload (resolver is called again internally, but is idempotent)
+    # Step 1: Resolve short URL (only needed for upload payload, not for display)
+    # Step 2: Upload
     result = await upload_google_map(google_map_url)
     if not result.success:
         msg = get_i18n_msg("google_map_upload_failed", lang, url=google_map_url, error=result.error or "Unknown")
@@ -153,8 +149,6 @@ async def _handle_google_map_upload(bot: discord.Client, message: discord.Messag
 
     block = [
         "🗺️ New Google Map Available via Qurl",
-        f"Type: google-map",
-        f"URL: {display_url}",
     ]
     if resource_id_display:
         block.append(f"Resource ID: {resource_id_display}")
