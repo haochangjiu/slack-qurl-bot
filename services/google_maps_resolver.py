@@ -137,8 +137,9 @@ def _extract_place_id(url: str) -> str | None:
     """
     logger.info(f"[google_maps_resolver] Attempting to extract place_id from URL: {url}")
 
-    # Pattern: data=...!2sPLACE_ID!...
-    m = re.search(r"data=[^!]*![^!]*!([^!]+)", url)
+    # data=!3m1!4b1!4m6!3m5!1sPLACE_ID!8m2...
+    # Match exactly 3 '!' after 'data=', then capture the 4th segment (starts with 1s...)
+    m = re.search(r"data=[^!]*(?:![^!]*){3}!(1s[^!]+)", url)
     if m:
         candidate = m.group(1)
         if candidate.startswith("0x"):
