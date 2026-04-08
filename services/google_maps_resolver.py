@@ -48,6 +48,7 @@ async def _fetch_with_redirects(url: str, timeout: float = 30.0) -> str | None:
     Falls back to GET if HEAD is not supported.
     Returns the final resolved URL (from the response URL), or None on failure.
     """
+    logger.info(f"[google_maps_resolver] Fetching with redirects: {url}")
     try:
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(timeout),
@@ -59,9 +60,11 @@ async def _fetch_with_redirects(url: str, timeout: float = 30.0) -> str | None:
             except httpx.UnsupportedProtocol:
                 # Some servers reject HEAD; retry with GET
                 resp = await client.get(url, allow_redirects=True)
-            return str(resp.url)
+            resolved = str(resp.url)
+            logger.info(f"[google_maps_resolver] Resolved URL: {resolved} (status: {resp.status_code})")
+            return resolved
     except Exception as e:
-        logger.warning(f"Failed to resolve Google Maps URL {url}: {e}")
+        logger.warning(f"[google_maps_resolver] Failed to resolve Google Maps URL {url}: {e}")
         return None
 
 
@@ -75,7 +78,9 @@ async def _call_embed_api(short_url: str, resolved_url: str) -> str | None:
     or None if the API is unavailable or fails.
     """
     api_key = getattr(settings, "google_maps_embed_api_key", None) or None
+    logger.info(f"[google_maps_resolver] google_maps_embed_api_key is set: {bool(api_key)}")
     if not api_key:
+        logger.warning("[google_maps_resolver] No GOOGLE_MAPS_EMBED_API_KEY configured, skipping embed API call")
         return None
 
     # Extract the place query from the resolved URL
@@ -86,7 +91,11 @@ async def _call_embed_api(short_url: str, resolved_url: str) -> str | None:
         re.IGNORECASE,
     )
     if not place_match:
+        logger.warning(f"[google_maps_resolver] Resolved URL does not match expected pattern: {resolved_url}")
         return None
+
+    extracted_place_id = _extract_place_id(resolved_url)
+    logger.info(f"[google_maps_resolver] Extracted place_id from resolved URL: {extracted_place_id}")
 
     try:
         async with httpx.AsyncClient(
@@ -96,27 +105,35 @@ async def _call_embed_api(short_url: str, resolved_url: str) -> str | None:
             resp = await client.get(
                 "https://www.google.com/maps/api/place/details/json",
                 params={
-                    "placeid": _extract_place_id(resolved_url) or "",
+                    "placeid": extracted_place_id or "",
                     "key": api_key,
                 },
             )
+            logger.info(f"[google_maps_resolver] Embed API response status: {resp.status_code}, body: {resp.text[:500]}")
             if resp.status_code == 200:
                 data = resp.json()
                 result = data.get("result", {})
                 place_id = result.get("place_id")
+                logger.info(f"[google_maps_resolver] Place details API result place_id: {place_id}")
                 if place_id:
-                    return f"https://www.google.com/maps/embed?pb=!1s{_encode_place_id(place_id)}"
+                    embed_url = f"https://www.google.com/maps/embed?pb=!1s{_encode_place_id(place_id)}"
+                    logger.info(f"[google_maps_resolver] Generated embed URL: {embed_url}")
+                    return embed_url
+                else:
+                    logger.warning(f"[google_maps_resolver] No place_id in API response result: {result}")
     except Exception as e:
-        logger.warning(f"Embed API call failed for {short_url}: {e}")
+        logger.warning(f"[google_maps_resolver] Embed API call failed for {short_url}: {e}")
 
     return None
 
 
 def _extract_place_id(url: str) -> str | None:
     """Extract place ID from a Google Maps URL (after /place/ or @... )."""
+    logger.info(f"[google_maps_resolver] Attempting to extract place_id from URL: {url}")
     # Pattern: /place/PLACE_ID/ or /data=...!2sPLACE_ID!...
     m = re.search(r"/place/([^/@?]+)/", url)
     if m:
+        logger.info(f"[google_maps_resolver] place_id extracted via /place/ pattern: {m.group(1)}")
         return m.group(1)
     # @lat,lng,zoom place: /@lat,lng,.../.../(PLACE_NAME)/...
     m = re.search(r"@[-0-9.,]+/[^/]+/([^/]+)/", url)
@@ -124,7 +141,9 @@ def _extract_place_id(url: str) -> str | None:
         name = m.group(1)
         # If it looks like a place ID (starts with 0x...), return it
         if name.startswith("0x"):
+            logger.info(f"[google_maps_resolver] place_id extracted via @ pattern: {name}")
             return name
+    logger.warning(f"[google_maps_resolver] No place_id found in URL: {url}")
     return None
 
 
@@ -184,9 +203,12 @@ async def resolve_google_map(url: str) -> ResolvedGoogleMap:
 
     # Fall back to the resolved direct URL as embed
     if not embed_url:
-        # Use the resolved URL as-is for the embed
+        logger.warning(f"[google_maps_resolver] Embed API returned None, falling back to resolved URL: {resolved_url}")
         embed_url = resolved_url
+    else:
+        logger.info(f"[google_maps_resolver] Successfully generated embed URL via API")
 
+    logger.info(f"[google_maps_resolver] Final result | original: {url} | resolved: {resolved_url} | embed: {embed_url}")
     return ResolvedGoogleMap(
         original_url=url,
         resolved_url=resolved_url,
