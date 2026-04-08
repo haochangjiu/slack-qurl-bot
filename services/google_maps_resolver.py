@@ -56,10 +56,10 @@ async def _fetch_with_redirects(url: str, timeout: float = 30.0) -> str | None:
         ) as client:
             # Prefer HEAD to avoid downloading body
             try:
-                resp = await client.head(url, allow_redirects=True)
+                resp = await client.head(url)
             except httpx.UnsupportedProtocol:
                 # Some servers reject HEAD; retry with GET
-                resp = await client.get(url, allow_redirects=True)
+                resp = await client.get(url)
             resolved = str(resp.url)
             logger.info(f"[google_maps_resolver] Resolved URL: {resolved} (status: {resp.status_code})")
             return resolved
