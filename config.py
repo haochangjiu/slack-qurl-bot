@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # Mint link API base URL (address before /{resource_id}), e.g. https://get.qurl.link/api/mint_link
     mint_link_api_url: str = "https://get.qurl.link/api/mint_link"
 
+    # Google Maps Embed API key (optional - enables stable embed URL generation for goo.gl short links)
+    google_maps_embed_api_key: str | None = None
+
     class Config:
         env_file = ".env"
 

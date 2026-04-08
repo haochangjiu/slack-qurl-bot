@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import httpx
 
+from services.google_maps_resolver import resolve_google_map, ResolvedGoogleMap
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -138,12 +139,21 @@ async def upload_google_map(url: str) -> UploadResult:
     """
     Upload Google Map link as JSON to the upload API.
 
+    For maps.app.goo.gl short links, resolves them to stable embed URLs
+    before uploading (follows redirects, optionally uses Maps Embed API).
+
     Args:
         url: Google Maps URL (e.g. https://maps.app.goo.gl/V2F1h99QVgLEueA37)
 
     Returns:
         UploadResult with qurl_link, resource_url, etc.
     """
+    # Step 1: Resolve short URL to embed URL
+    resolved: ResolvedGoogleMap = await resolve_google_map(url)
+
+    # Use the resolved embed URL for upload
+    upload_url: str = resolved.embed_url or resolved.resolved_url or url
+
     base = (settings.upload_api_url or "").rstrip("/")
     if not base:
         return UploadResult(
@@ -152,22 +162,30 @@ async def upload_google_map(url: str) -> UploadResult:
             error="Upload API not configured (UPLOAD_API_URL)"
         )
 
-    upload_url = f"{base}/api/upload"
-    payload = {
+    # Attach resolved info in payload for transparency
+    extra: dict = {}
+    if resolved.resolved_url and resolved.resolved_url != upload_url:
+        extra["resolved_url"] = resolved.resolved_url
+
+    upload_payload: dict = {
         "type": "google-map",
-        "url": url,
+        "url": upload_url,
     }
+    if extra:
+        upload_payload["_meta"] = extra
+
+    api_endpoint = f"{base}/api/upload"
     files = {
         "file": (
             "google-map.json",
-            json.dumps(payload).encode("utf-8"),
+            json.dumps(upload_payload).encode("utf-8"),
             "application/json",
         )
     }
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(upload_url, files=files)
+            resp = await client.post(api_endpoint, files=files)
             data = resp.json() if resp.content else {}
 
         if resp.status_code in (200, 201) and data.get("success"):
