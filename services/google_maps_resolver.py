@@ -51,7 +51,7 @@ async def _fetch_with_redirects(url: str, timeout: float = 30.0) -> str | None:
     Falls back to GET if HEAD is not supported.
     Returns the final resolved URL (from the response URL), or None on failure.
     """
-    logger.info(f"[google_maps_resolver] Fetching with redirects: {url}")
+    logger.debug(f"[google_maps_resolver] Fetching with redirects: {url}")
     try:
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(timeout),
@@ -64,7 +64,7 @@ async def _fetch_with_redirects(url: str, timeout: float = 30.0) -> str | None:
                 # Some servers reject HEAD; retry with GET
                 resp = await client.get(url)
             resolved = str(resp.url)
-            logger.info(f"[google_maps_resolver] Resolved URL: {resolved} (status: {resp.status_code})")
+            logger.debug(f"[google_maps_resolver] Resolved URL: {resolved} (status: {resp.status_code})")
             return resolved
     except Exception as e:
         logger.warning(f"[google_maps_resolver] Failed to resolve Google Maps URL {url}: {e}")
@@ -84,12 +84,12 @@ def _extract_place_name(url: str) -> str | None:
         name = m.group(1)
         try:
             decoded = urllib.parse.unquote(name)
-            logger.info(f"[google_maps_resolver] Place name extracted: {decoded}")
+            logger.debug(f"[google_maps_resolver] Place name extracted: {decoded}")
             return decoded
         except Exception:
             logger.warning(f"[google_maps_resolver] Failed to decode place name: {name}")
             return name
-    logger.info(f"[google_maps_resolver] No place name found in URL: {url}")
+    logger.debug(f"[google_maps_resolver] No place name found in URL: {url}")
     return None
 
 
@@ -109,7 +109,7 @@ def _extract_directions_coords(url: str) -> dict | None:
         return None
     origin = parts[0].rstrip("/")
     destination = parts[1].rstrip("/")
-    logger.info(f"[google_maps_resolver] Directions coords extracted: origin={origin}, destination={destination}")
+    logger.debug(f"[google_maps_resolver] Directions coords: origin={origin}, destination={destination}")
     return {"origin": origin, "destination": destination}
 
 
@@ -121,7 +121,7 @@ def _extract_place_id(url: str) -> str | None:
     or at the end of the URL as !...!XdHash after @lat,lng,zoom format.
     Falls back to /place/ slug only if it starts with 0x (looks like a real ID).
     """
-    logger.info(f"[google_maps_resolver] Attempting to extract place_id from URL: {url}")
+    logger.debug(f"[google_maps_resolver] Attempting to extract place_id from URL: {url}")
 
     # data=!3m1!4b1!4m6!3m5!1s0x80dcf08fba64fd89:0xe42eb4bc7001fa15!8m2...
     # !3m1 !4b1 !4m6 = (?:![^!]*){3}  → 吞掉前3个 segment
@@ -130,7 +130,7 @@ def _extract_place_id(url: str) -> str | None:
     if m:
         candidate = m.group(2)  # group(2) = 内容在 1s 之后，不含 1s
         if candidate.startswith("0x") or candidate.startswith("ChIJ"):
-            logger.info(f"[google_maps_resolver] place_id extracted via data= pattern: {candidate}")
+            logger.debug(f"[google_maps_resolver] place_id extracted via data= pattern: {candidate}")
             return candidate
 
     # Pattern: /place/PLACE_ID/ — only use if it looks like a real place ID
@@ -138,7 +138,7 @@ def _extract_place_id(url: str) -> str | None:
     if m:
         candidate = m.group(1)
         if candidate.startswith("0x"):
-            logger.info(f"[google_maps_resolver] place_id extracted via /place/ pattern: {candidate}")
+            logger.debug(f"[google_maps_resolver] place_id extracted via /place/ pattern: {candidate}")
             return candidate
 
     # @lat,lng,zoom place: /@lat,lng,.../.../(PLACE_NAME)/...
@@ -146,10 +146,10 @@ def _extract_place_id(url: str) -> str | None:
     if m:
         name = m.group(1)
         if name.startswith("0x"):
-            logger.info(f"[google_maps_resolver] place_id extracted via @ pattern: {name}")
+            logger.debug(f"[google_maps_resolver] place_id extracted via @ pattern: {name}")
             return name
 
-    logger.warning(f"[google_maps_resolver] No place_id found in URL: {url}")
+    logger.debug(f"[google_maps_resolver] No place_id found in URL: {url}")
     return None
 
 
@@ -164,9 +164,8 @@ async def _call_embed_api(short_url: str, resolved_url: str) -> str | None:
       - directions 模式: https://www.google.com/maps/embed/v1/directions?key=...&origin=...&destination=...
     """
     api_key = getattr(settings, "google_maps_embed_api_key", None) or None
-    logger.info(f"[google_maps_resolver] google_maps_embed_api_key is set: {bool(api_key)}")
     if not api_key:
-        logger.warning("[google_maps_resolver] No GOOGLE_MAPS_EMBED_API_KEY configured, skipping embed API call")
+        logger.debug("[google_maps_resolver] No GOOGLE_MAPS_EMBED_API_KEY configured, skipping embed API call")
         return None
 
     embed_url = None
@@ -180,17 +179,16 @@ async def _call_embed_api(short_url: str, resolved_url: str) -> str | None:
             f"&origin={coords['origin']}"
             f"&destination={coords['destination']}"
         )
-        logger.info(f"[google_maps_resolver] Using directions embed mode: {embed_url}")
+        logger.debug(f"[google_maps_resolver] Using directions embed mode")
 
     # 模式 B: /place/ 地点链接
     else:
         place_name = _extract_place_name(resolved_url)
-        logger.info(f"[google_maps_resolver] Extracted place_name for embed API: {place_name}")
         if not place_name:
             logger.warning(f"[google_maps_resolver] Could not extract place name from resolved URL: {resolved_url}")
             return None
         embed_url = f"https://www.google.com/maps/embed/v1/place?key={api_key}&q={urllib.parse.quote(place_name)}"
-        logger.info(f"[google_maps_resolver] Using place embed mode: {embed_url}")
+        logger.debug(f"[google_maps_resolver] Using place embed mode")
 
     # 调用 Embed API（GET 请求，返回 HTML body 即成功）
     try:
@@ -199,12 +197,11 @@ async def _call_embed_api(short_url: str, resolved_url: str) -> str | None:
             follow_redirects=True,
         ) as client:
             resp = await client.get(embed_url)
-            logger.info(f"[google_maps_resolver] Embed API response status: {resp.status_code}, body_preview: {resp.text[:300]}")
+            logger.debug(f"[google_maps_resolver] Embed API response status: {resp.status_code}")
             if resp.status_code == 200 and resp.text:
-                logger.info(f"[google_maps_resolver] Embed API call successful, returning embed_url: {embed_url}")
                 return embed_url
             else:
-                logger.warning(f"[google_maps_resolver] Embed API returned non-200 or empty body: {resp.status_code}")
+                logger.warning(f"[google_maps_resolver] Embed API returned non-200: {resp.status_code}")
     except Exception as e:
         logger.warning(f"[google_maps_resolver] Embed API call failed for {short_url}: {e}")
 
@@ -257,12 +254,10 @@ async def resolve_google_map(url: str) -> ResolvedGoogleMap:
 
     # Fall back to the resolved direct URL as embed
     if not embed_url:
-        logger.warning(f"[google_maps_resolver] Embed API returned None, falling back to resolved URL: {resolved_url}")
+        logger.debug(f"[google_maps_resolver] Embed API returned None, falling back to resolved URL")
         embed_url = resolved_url
-    else:
-        logger.info(f"[google_maps_resolver] Successfully generated embed URL via API")
 
-    logger.info(f"[google_maps_resolver] Final result | original: {url} | resolved: {resolved_url} | embed: {embed_url}")
+    logger.debug(f"[google_maps_resolver] Final result | original: {url} | resolved: {resolved_url} | embed: {embed_url}")
     return ResolvedGoogleMap(
         original_url=url,
         resolved_url=resolved_url,

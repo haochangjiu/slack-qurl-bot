@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # Google Maps Embed API key (optional - enables stable embed URL generation for goo.gl short links)
     google_maps_embed_api_key: str | None = None
 
+    # SQLite database path for resource tracking (Discord file/map upload records + mint link history)
+    db_path: str = "data/resources.db"
+
     class Config:
         env_file = ".env"
 

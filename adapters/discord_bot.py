@@ -25,9 +25,69 @@ from core.bot_core import (
 from services.time_utils import get_timezone_from_discord_locale, format_utc_to_local
 from services.upload_client import upload_file, upload_google_map, extract_resource_id_from_url
 from services.mint_link_client import mint_links
+from services.resource_store import init_db, record_resource, get_resource, is_owner, is_expired, record_mint_link, list_resources_by_owner, get_mint_links_for_resource, delete_resource
+from services.google_maps_resolver import resolve_google_map
 
 _GOOGLE_MAPS_PATTERN = re.compile(r"https://maps\.app\.goo\.gl/[^\s<>)\]\"']+", re.IGNORECASE)
 _GOOGLE_MAPS_EMBED_PATTERN = re.compile(r"https://www\.google\.com/maps/embed[^\s<>)\]\"']+", re.IGNORECASE)
+
+# ---------------------------------------------------------------------------
+# 数据库初始化（启动时调用一次）
+# ---------------------------------------------------------------------------
+
+init_db()
+
+
+# ---------------------------------------------------------------------------
+# 辅助函数
+# ---------------------------------------------------------------------------
+
+def _discord_name(user: discord.User | discord.Member) -> str:
+    """
+    返回该 Discord 用户的稳定标识名。
+
+    优先使用 global_name（显示名称），fallback 到 "name#discriminator" 格式
+    （discriminator 为 0 时表示新版账号，改用 name 本身）。
+    """
+    if user.discriminator != "0":
+        return f"{user.name}#{user.discriminator}"
+    return getattr(user, "global_name", None) or user.name
+
+
+def _can_share(
+    resource_id: str,
+    requester_id: str,
+    requester_name: str,
+) -> tuple[bool, str]:
+    """
+    判断申请人是否有权为该 resource_id 生成 mint link。
+
+    规则：
+      1. 资源不存在 → 禁止
+      2. 资源已过期 → 禁止
+      3. 申请人是拥有人 → 允许
+      4. 申请人不是拥有人 → 禁止
+    """
+    # 不存在
+    res = get_resource(resource_id)
+    if not res:
+        return False, "not_found"
+
+    # 已过期
+    expired, exp_str = is_expired(resource_id)
+    if expired:
+        return False, "expired"
+
+    # 权限检查（同时匹配 discord_id 或 discord_name）
+    if not is_owner(resource_id, requester_id, requester_name):
+        return False, "forbidden"
+
+    return True, ""
+
+
+# ---------------------------------------------------------------------------
+# Handlers
+# ---------------------------------------------------------------------------
 
 
 async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_dm: bool) -> None:
@@ -53,6 +113,24 @@ async def _handle_file_upload(bot: discord.Client, message: discord.Message, is_
             if not result.success:
                 errors.append(get_i18n_msg("upload_failed", lang, filename=att.filename, error=result.error or "Unknown"))
                 continue
+
+            # 记录到本地 SQLite
+            rid = result.resource_id or extract_resource_id_from_url(result.qurl_link or result.resource_url)
+            if rid:
+                record_resource(
+                    resource_id=rid,
+                    discord_id=str(message.author.id),
+                    discord_name=_discord_name(message.author),
+                    md5_hash=result.md5_hash,
+                    file_type="file",
+                    expires_at=result.expires_at,
+                )
+            else:
+                logger.warning(
+                    f"[discord_bot] Could not extract resource_id for {att.filename}, "
+                    f"qurl_link={result.qurl_link}, resource_url={result.resource_url}"
+                )
+
             link = result.qurl_link or result.resource_url
             if link:
                 exp = format_utc_to_local(result.expires_at, user_tz=user_tz) if result.expires_at else "-"
@@ -128,7 +206,10 @@ async def _handle_google_map_upload(bot: discord.Client, message: discord.Messag
     lang = "zh" if locale and str(locale).startswith("zh") else "en"
     user_tz = get_timezone_from_discord_locale(locale)
 
-    # Step 1: Resolve short URL (only needed for upload payload, not for display)
+    # Step 1: Resolve to embed URL (needed for DB record)
+    resolved = await resolve_google_map(google_map_url)
+    embed_url = resolved.embed_url or resolved.resolved_url or google_map_url
+
     # Step 2: Upload
     result = await upload_google_map(google_map_url)
     if not result.success:
@@ -143,6 +224,23 @@ async def _handle_google_map_upload(bot: discord.Client, message: discord.Messag
         reply = f"{message.author.mention} {msg}" if not is_dm else msg
         await message.channel.send(reply)
         return
+
+    # 记录到本地 SQLite
+    rid = result.resource_id or extract_resource_id_from_url(link)
+    if rid:
+        record_resource(
+            resource_id=rid,
+            discord_id=str(message.author.id),
+            discord_name=_discord_name(message.author),
+            file_type="google-map",
+            embed_url=embed_url,
+            expires_at=result.expires_at,
+        )
+    else:
+        logger.warning(
+            f"[discord_bot] Could not extract resource_id for google_map {google_map_url}, "
+            f"qurl_link={link}"
+        )
 
     resource_id_display = result.resource_id or extract_resource_id_from_url(link)
     exp = format_utc_to_local(result.expires_at, user_tz=user_tz) if result.expires_at else "-"
@@ -227,6 +325,35 @@ async def _handle_mint_link(bot: discord.Client, message: discord.Message) -> No
         await message.channel.send(f"{message.author.mention} {hint}")
         return
 
+    # 权限 + 过期检查
+    allowed, reason = _can_share(resource_id, str(message.author.id), _discord_name(message.author))
+    if not allowed:
+        if reason == "not_found":
+            err_msg = (
+                f"⚠️ 资源 `{resource_id}` 不存在或尚未上传记录。"
+                if lang == "zh"
+                else f"⚠️ Resource `{resource_id}` not found."
+            )
+        elif reason == "expired":
+            err_msg = (
+                f"⚠️ 资源 `{resource_id}` 已过期。"
+                if lang == "zh"
+                else f"⚠️ Resource `{resource_id}` has expired."
+            )
+        else:
+            err_msg = (
+                f"⚠️ 你不是资源 `{resource_id}` 的上传者，无权分发。"
+                if lang == "zh"
+                else f"⚠️ You are not the owner of resource `{resource_id}`. Only the uploader can distribute this resource."
+            )
+        # 私信说明原因
+        try:
+            await message.author.send(err_msg)
+        except discord.Forbidden:
+            pass
+        await message.channel.send(f"{message.author.mention} {err_msg}")
+        return
+
     mentioned_users = [m for m in message.mentions if bot.user and m.id != bot.user.id]
     dm_targets = mentioned_users if mentioned_users else [message.author]
     n = len(dm_targets)
@@ -251,6 +378,7 @@ async def _handle_mint_link(bot: discord.Client, message: discord.Message) -> No
         expires_at = item.get("expires_at")
         if not qurl_link:
             continue
+
         exp_display = format_utc_to_local(expires_at, user_tz=user_tz) if expires_at else "-"
         block = [
             "📎 Link Generated via Qurl",
@@ -261,6 +389,14 @@ async def _handle_mint_link(bot: discord.Client, message: discord.Message) -> No
         try:
             await target.send(success_msg)
             success_dmed.append(target)
+            # 仅 DM 成功后才记录到数据库
+            record_mint_link(
+                resource_id=resource_id,
+                discord_id=str(target.id),
+                discord_name=_discord_name(target),
+                qurl_link=qurl_link,
+                expires_at=expires_at,
+            )
         except discord.Forbidden:
             logger.warning(f"Cannot DM Discord user {target} (id: {target.id})")
 
@@ -347,6 +483,11 @@ class QURLDiscordBot(discord.Client):
                 return
             hint = get_i18n_msg("mint_link_prompt", lang)
             await message.channel.send(f"{message.author.mention} {hint}")
+            return
+
+        # DM: check for resource_id first (mint link, with ownership check)
+        if _extract_resource_id(clean_text):
+            await _handle_mint_link(self, message)
             return
 
         # DM: file upload when attachments exist
@@ -438,8 +579,210 @@ async def help_cmd(interaction: discord.Interaction):
     await interaction.response.send_message(_QURL_HELP_MSG)
 
 
+# ---------------------------------------------------------------------------
+# /qurl list
+# ---------------------------------------------------------------------------
+
+@app_commands.command(
+    name="list",
+    description="List all files you have uploaded",
+)
+async def qurl_list_cmd(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+
+    discord_id = str(interaction.user.id)
+    discord_name = _discord_name(interaction.user)
+    locale = getattr(interaction.user, "locale", None)
+    lang = "zh" if locale and str(locale).startswith("zh") else "en"
+
+    resources = list_resources_by_owner(discord_id, discord_name)
+
+    if not resources:
+        if lang == "zh":
+            msg = "📂 你还没有上传过任何文件。"
+        else:
+            msg = "📂 You haven't uploaded any files yet."
+        await interaction.followup.send(msg, ephemeral=True)
+        return
+
+    lines = []
+    for r in resources:
+        rid = r.get("resource_id", "?")
+        ftype = r.get("file_type", "file")
+        created = r.get("created_at", "-")
+        exp = r.get("expires_at", None)
+
+        if lang == "zh":
+            type_label = "🗺️ Google 地图" if ftype == "google-map" else "📎 文件"
+            exp_display = f" | ⏳ {exp}" if exp else " | ⏳ 不过期"
+            lines.append(f"**{rid}**\n  {type_label} | 上传于 {created}{exp_display}")
+        else:
+            type_label = "🗺️ Google Map" if ftype == "google-map" else "📎 File"
+            exp_display = f" | ⏳ {exp}" if exp else " | ⏳ No expiry"
+            lines.append(f"**{rid}**\n  {type_label} | Uploaded {created}{exp_display}")
+
+    header = "📂 你的上传记录" if lang == "zh" else "📂 Your Uploads"
+    body = "\n\n".join(lines)
+    await interaction.followup.send(f"{header}\n\n{body}", ephemeral=True)
+
+
+# ---------------------------------------------------------------------------
+# /qurl status
+# ---------------------------------------------------------------------------
+
+@app_commands.command(
+    name="status",
+    description="Check link usage for a specific resource",
+)
+@app_commands.describe(resource_id="The resource ID (e.g. r_abc123)")
+async def qurl_status_cmd(interaction: discord.Interaction, resource_id: str):
+    await interaction.response.defer(ephemeral=True)
+
+    discord_id = str(interaction.user.id)
+    discord_name = _discord_name(interaction.user)
+    locale = getattr(interaction.user, "locale", None)
+    lang = "zh" if locale and str(locale).startswith("zh") else "en"
+
+    # 权限检查
+    if not is_owner(resource_id, discord_id, discord_name):
+        if lang == "zh":
+            msg = f"⚠️ 你不是资源 `{resource_id}` 的上传者，无法查看。"
+        else:
+            msg = f"⚠️ You are not the owner of resource `{resource_id}`. Only the uploader can view this resource."
+        await interaction.followup.send(msg, ephemeral=True)
+        return
+
+    res = get_resource(resource_id)
+    if not res:
+        if lang == "zh":
+            msg = f"⚠️ 资源 `{resource_id}` 不存在。"
+        else:
+            msg = f"⚠️ Resource `{resource_id}` not found."
+        await interaction.followup.send(msg, ephemeral=True)
+        return
+
+    mint_links = get_mint_links_for_resource(resource_id)
+
+    # 构建资源信息
+    ftype = res.get("file_type", "file")
+    created = res.get("created_at", "-")
+    exp = res.get("expires_at", None)
+    uploader_name = res.get("discord_name", "-")
+
+    if lang == "zh":
+        type_label = "🗺️ Google 地图" if ftype == "google-map" else "📎 文件"
+        exp_display = exp if exp else "不过期"
+        header = f"📊 资源状态 — `{resource_id}`"
+        meta = [
+            f"类型: {type_label}",
+            f"上传者: {uploader_name}",
+            f"上传时间: {created}",
+            f"过期时间: {exp_display}",
+        ]
+    else:
+        type_label = "🗺️ Google Map" if ftype == "google-map" else "📎 File"
+        exp_display = exp if exp else "No expiry"
+        header = f"📊 Resource Status — `{resource_id}`"
+        meta = [
+            f"Type: {type_label}",
+            f"Uploader: {uploader_name}",
+            f"Uploaded: {created}",
+            f"Expires: {exp_display}",
+        ]
+
+    # 构建链接列表
+    if mint_links:
+        link_lines = []
+        for link in mint_links:
+            lnk = link.get("qurl_link", "?")
+            recipient = link.get("discord_name", "?")
+            minted = link.get("minted_at", "-")
+            link_exp = link.get("expires_at", "-")
+            if lang == "zh":
+                link_lines.append(
+                    f"  • {lnk}\n    接收人: {recipient} | 生成时间: {minted} | 链接过期: {link_exp}"
+                )
+            else:
+                link_lines.append(
+                    f"  • {lnk}\n    Recipient: {recipient} | Minted: {minted} | Expires: {link_exp}"
+                )
+        if lang == "zh":
+            links_header = f"\n已分发的链接 ({len(mint_links)} 条)："
+            links_body = "\n".join(link_lines)
+        else:
+            links_header = f"\nDistributed links ({len(mint_links)}):"
+            links_body = "\n".join(link_lines)
+    else:
+        links_header = ""
+        links_body = ""
+
+    meta_str = "\n".join(meta)
+    full_msg = f"{header}\n{meta_str}{links_header}\n{links_body}"
+    await interaction.followup.send(full_msg, ephemeral=True)
+
+
+# ---------------------------------------------------------------------------
+# /qurl revoke
+# ---------------------------------------------------------------------------
+
+@app_commands.command(
+    name="revoke",
+    description="Revoke a resource and all its distributed links",
+)
+@app_commands.describe(resource_id="The resource ID to revoke")
+async def qurl_revoke_cmd(interaction: discord.Interaction, resource_id: str):
+    await interaction.response.defer(ephemeral=True)
+
+    discord_id = str(interaction.user.id)
+    discord_name = _discord_name(interaction.user)
+    locale = getattr(interaction.user, "locale", None)
+    lang = "zh" if locale and str(locale).startswith("zh") else "en"
+
+    # 权限检查
+    if not is_owner(resource_id, discord_id, discord_name):
+        if lang == "zh":
+            msg = f"⚠️ 你不是资源 `{resource_id}` 的上传者，无法删除。"
+        else:
+            msg = f"⚠️ You are not the owner of resource `{resource_id}`. Only the uploader can revoke this resource."
+        await interaction.followup.send(msg, ephemeral=True)
+        return
+
+    res = get_resource(resource_id)
+    if not res:
+        if lang == "zh":
+            msg = f"⚠️ 资源 `{resource_id}` 不存在。"
+        else:
+            msg = f"⚠️ Resource `{resource_id}` not found."
+        await interaction.followup.send(msg, ephemeral=True)
+        return
+
+    success, mint_count, res_count = delete_resource(resource_id)
+
+    if success:
+        if lang == "zh":
+            msg = (
+                f"✅ 资源 `{resource_id}` 已删除。\n"
+                f"  同时删除了 {mint_count} 条链接记录。"
+            )
+        else:
+            msg = (
+                f"✅ Resource `{resource_id}` has been revoked.\n"
+                f"  {mint_count} associated link record(s) were also deleted."
+            )
+    else:
+        if lang == "zh":
+            msg = f"❌ 删除资源 `{resource_id}` 失败，请稍后重试。"
+        else:
+            msg = f"❌ Failed to revoke resource `{resource_id}`. Please try again later."
+
+    await interaction.followup.send(msg, ephemeral=True)
+
+
 qurl_group = app_commands.Group(name="qurl", description="Qurl Bot commands")
 qurl_group.add_command(help_cmd)
+qurl_group.add_command(qurl_list_cmd)
+qurl_group.add_command(qurl_status_cmd)
+qurl_group.add_command(qurl_revoke_cmd)
 
 
 def run_discord_bot():
