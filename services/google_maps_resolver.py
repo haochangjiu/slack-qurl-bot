@@ -128,21 +128,39 @@ async def _call_embed_api(short_url: str, resolved_url: str) -> str | None:
 
 
 def _extract_place_id(url: str) -> str | None:
-    """Extract place ID from a Google Maps URL (after /place/ or @... )."""
+    """Extract place ID from a Google Maps URL.
+
+    The actual place ID lives in the data= param as 0x... format, e.g.
+      /data=!3m1!4b1!4m6!3m5!1s0x80dcf08fba64fd89:0xe42eb4bc7001fa15!...
+    or at the end of the URL as !...!XdHash after @lat,lng,zoom format.
+    Falls back to /place/ slug only if it starts with 0x (looks like a real ID).
+    """
     logger.info(f"[google_maps_resolver] Attempting to extract place_id from URL: {url}")
-    # Pattern: /place/PLACE_ID/ or /data=...!2sPLACE_ID!...
+
+    # Pattern: data=...!2sPLACE_ID!...
+    m = re.search(r"data=[^!]*![^!]*!([^!]+)", url)
+    if m:
+        candidate = m.group(1)
+        if candidate.startswith("0x"):
+            logger.info(f"[google_maps_resolver] place_id extracted via data= pattern: {candidate}")
+            return candidate
+
+    # Pattern: /place/PLACE_ID/ — only use if it looks like a real place ID
     m = re.search(r"/place/([^/@?]+)/", url)
     if m:
-        logger.info(f"[google_maps_resolver] place_id extracted via /place/ pattern: {m.group(1)}")
-        return m.group(1)
+        candidate = m.group(1)
+        if candidate.startswith("0x"):
+            logger.info(f"[google_maps_resolver] place_id extracted via /place/ pattern: {candidate}")
+            return candidate
+
     # @lat,lng,zoom place: /@lat,lng,.../.../(PLACE_NAME)/...
     m = re.search(r"@[-0-9.,]+/[^/]+/([^/]+)/", url)
     if m:
         name = m.group(1)
-        # If it looks like a place ID (starts with 0x...), return it
         if name.startswith("0x"):
             logger.info(f"[google_maps_resolver] place_id extracted via @ pattern: {name}")
             return name
+
     logger.warning(f"[google_maps_resolver] No place_id found in URL: {url}")
     return None
 

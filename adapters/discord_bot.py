@@ -156,8 +156,6 @@ async def _handle_google_map_upload(bot: discord.Client, message: discord.Messag
         f"Type: google-map",
         f"URL: {display_url}",
     ]
-    if resolved.original_url != display_url:
-        block.append(f"Short URL: {google_map_url}")
     if resource_id_display:
         block.append(f"Resource ID: {resource_id_display}")
     block.append(f"🔗 Qurl Access Link: {link}")
