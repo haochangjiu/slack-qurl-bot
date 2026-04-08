@@ -175,6 +175,7 @@ async def upload_google_map(url: str) -> UploadResult:
         upload_payload["_meta"] = extra
 
     api_endpoint = f"{base}/api/upload"
+    logger.info(f"[upload_google_map] Uploading Google Maps URL | resolved embed: {upload_url} | payload: {json.dumps(upload_payload)}")
     files = {
         "file": (
             "google-map.json",
