@@ -84,9 +84,9 @@ async def _call_embed_api(short_url: str, resolved_url: str) -> str | None:
         return None
 
     # Extract the place query from the resolved URL
-    # e.g. https://www.google.com/maps/place/... -> extract "..." part
+    # e.g. https://www.google.com/maps/place/... or https://www.google.com.hk/maps/place/... -> extract "..." part
     place_match = re.search(
-        r"https://www\.google\.com/maps/([^?]+)",
+        r"https://www\.google\.com\.[^/]+/maps/([^?]+)",
         resolved_url,
         re.IGNORECASE,
     )
