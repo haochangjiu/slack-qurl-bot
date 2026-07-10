@@ -41,7 +41,7 @@ def _preprocess_slack(text: str) -> str:
 
 def _parse_command(text: str) -> tuple[str | None, str]:
     """
-    Parse /setkey, /mykey, /delkey from message text.
+    Parse supported commands from message text.
     Returns (command_name, arg) e.g. ('setkey', 'xxx') or (None, '') if not a command.
     """
     t = text.strip()
@@ -55,6 +55,9 @@ def _parse_command(text: str) -> tuple[str | None, str]:
     if t.startswith("/summary"):
         arg = t[8:].strip()
         return ("summary", arg)
+    summary_match = re.match(r"(?is)^summary(?:\s+(.*))?$", t)
+    if summary_match:
+        return ("summary", (summary_match.group(1) or "").strip())
     return (None, "")
 
 
