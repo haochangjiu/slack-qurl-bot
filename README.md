@@ -7,6 +7,7 @@
 - 解析用户消息中的 URL
 - 识别用户意图（是否需要代理链接）
 - 调用 LayerV API 生成 QURL
+- Slack 支持 `/summary <url>` 获取网页摘要
 - 支持自定义过期时间
 - 支持 Slack 和 Discord 双平台
 
@@ -53,6 +54,14 @@
 ### 5. 安装应用到工作区
 
 在 **Install App** 页面点击安装，获取 `xoxb-` Bot Token
+
+### 5.1 配置 Slash Commands
+
+在 **Slash Commands** 页面注册以下命令:
+- `/summary`
+- `/setkey`
+- `/mykey`
+- `/delkey`
 
 ### 6. 配置环境变量
 
@@ -102,6 +111,9 @@ google.com 请给我代理地址
 
 # 英文也支持
 @QURLBot example.com proxy please
+
+# Slack slash command
+/summary https://example.com
 ```
 
 机器人回复:

@@ -17,6 +17,7 @@ from core.bot_core import (
     analyze_message,
     build_proxy_reply,
     _dashboard_reply,
+    detect_language,
     handle_setkey,
     handle_mykey,
     handle_delkey,
@@ -24,6 +25,8 @@ from core.bot_core import (
     PLATFORM_SLACK,
 )
 from services.i18n import get_message
+from services.url_parser import extract_urls
+from services.web_summary import WebSummaryError, WebSummaryResult, web_summary_service
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,6 +52,9 @@ def _parse_command(text: str) -> tuple[str | None, str]:
         return ("mykey", "")
     if t.startswith("/delkey"):
         return ("delkey", "")
+    if t.startswith("/summary"):
+        arg = t[8:].strip()
+        return ("summary", arg)
     return (None, "")
 
 
@@ -82,6 +88,17 @@ async def handle_delkey_slack(ack, command, say):
     await say(msg)
 
 
+@app.command("/summary")
+async def handle_summary_slack(ack, command, say, client):
+    await ack()
+    user_id = command["user_id"]
+    text = command["text"].strip()
+    user_info = await _get_slack_user_info(client, user_id)
+    lang = _preferred_lang(user_info, text)
+    msg = await _build_summary_message(text, lang)
+    await say(f"<@{user_id}> {msg}")
+
+
 # ============== Message Events ==============
 
 
@@ -98,15 +115,16 @@ async def _get_bot_user_id(client) -> str:
 
 async def _get_slack_user_info(client, user_id: str) -> dict:
     """Get timezone and email from a single users_info call."""
-    info: dict = {"tz": None, "email": None}
+    info: dict = {"tz": None, "email": None, "locale": None}
     if not client:
         return info
     try:
-        response = await client.users_info(user=user_id)
+        response = await client.users_info(user=user_id, include_locale=True)
         if response.get("ok") and response.get("user"):
             user_data = response["user"]
             info["tz"] = user_data.get("tz")
             info["email"] = user_data.get("profile", {}).get("email")
+            info["locale"] = user_data.get("locale")
     except Exception as e:
         logger.warning(f"Failed to get user info for {user_id}: {e}")
     return info
@@ -122,6 +140,50 @@ async def _send_dm(client, user: str, text: str):
 def _extract_slack_mentions(text: str) -> list[str]:
     """Extract user IDs from Slack <@UXXXX> mentions."""
     return re.findall(r"<@([A-Z0-9]+)>", text)
+
+
+def _preferred_lang(user_info: dict | None, text: str) -> str:
+    locale = str((user_info or {}).get("locale") or "").lower()
+    if locale.startswith("zh"):
+        return "zh"
+    return detect_language(text)
+
+
+def _format_summary_result(result: WebSummaryResult, lang: str) -> str:
+    parts = [
+        get_message("summary_result_header", lang),
+        get_message("summary_result_url", lang, url=result.url),
+        get_message("summary_result_title", lang, title=result.title),
+        get_message("summary_result_summary", lang, summary=result.summary),
+    ]
+    if result.bullets:
+        parts.append(get_message("summary_result_bullets_header", lang))
+        parts.extend(get_message("summary_result_bullet", lang, item=item) for item in result.bullets)
+    if result.warning:
+        parts.append(get_message("summary_result_warning", lang, warning=result.warning))
+    if result.truncated:
+        parts.append(get_message("summary_result_truncated", lang))
+    return "\n".join(parts)
+
+
+async def _build_summary_message(text: str, lang: str) -> str:
+    urls = [
+        url.rstrip(".,;:!?)]}，。！？；：")
+        for url in extract_urls(text)
+    ]
+    if not urls:
+        return get_message("summary_url_required", lang)
+    if len(urls) > 1:
+        return get_message("summary_single_url_only", lang)
+
+    try:
+        result = await web_summary_service.summarize_url(urls[0], lang=lang)
+    except WebSummaryError as e:
+        if e.message_key in {"summary_fetch_failed", "summary_processing_error"}:
+            return get_message(e.message_key, lang, error=e.detail or "Unknown error")
+        return get_message(e.message_key, lang)
+
+    return _format_summary_result(result, lang)
 
 
 @app.event("app_mention")
@@ -153,6 +215,9 @@ async def handle_app_mention(event, say, client):
             msg, _ = await handle_setkey(user, arg, PLATFORM_SLACK)
         elif cmd == "mykey":
             msg, _ = await handle_mykey(user, PLATFORM_SLACK, user_tz=user_tz)
+        elif cmd == "summary":
+            lang = _preferred_lang(user_info, clean_text)
+            msg = await _build_summary_message(arg, lang)
         else:  # delkey
             msg, _ = await handle_delkey(user, PLATFORM_SLACK)
         await say(f"<@{user}> {msg}")
@@ -227,6 +292,9 @@ async def handle_direct_message(event, say, client):
             msg, _ = await handle_setkey(user, arg, PLATFORM_SLACK)
         elif cmd == "mykey":
             msg, _ = await handle_mykey(user, PLATFORM_SLACK, user_tz=user_info["tz"])
+        elif cmd == "summary":
+            lang = _preferred_lang(user_info, clean_text)
+            msg = await _build_summary_message(arg, lang)
         else:
             msg, _ = await handle_delkey(user, PLATFORM_SLACK)
         await say(f"<@{user}> {msg}")

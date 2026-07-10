@@ -24,7 +24,8 @@ MESSAGES = {
             "*示例:*\n"
             "• `我想访问 google.com，帮我生成代理链接`\n"
             "• `github.com 需要代理，有效期7天`\n"
-            "• `帮我访问这个网站 https://example.com`"
+            "• `帮我访问这个网站 https://example.com`\n"
+            "• `/summary https://example.com` 获取网页摘要"
         ),
         # API Key commands
         "no_api_key": (
@@ -63,6 +64,26 @@ MESSAGES = {
         "mint_link_error": "生成链接失败: {error}",
         # Google Maps upload
         "google_map_upload_failed": "⚠️ Google Maps 上传失败: {error}",
+        # Web summary
+        "summary_usage": "用法: `/summary <url>`",
+        "summary_url_required": "请提供一个要摘要的网站地址，例如：`/summary https://example.com`",
+        "summary_single_url_only": "一次只能总结一个网址，请只提供一个 URL。",
+        "summary_disabled": "⚠️ 网页摘要功能未启用，请联系管理员。",
+        "summary_invalid_url": "⚠️ 无效的网址。请输入可公开访问的 http(s) 地址。",
+        "summary_url_blocked": "⚠️ 出于安全考虑，无法访问该网址。请提供一个公开网站地址。",
+        "summary_fetch_failed": "⚠️ 获取网页内容失败：{error}",
+        "summary_non_html": "⚠️ 该地址返回的不是 HTML 网页内容，暂不支持摘要。",
+        "summary_no_content": "⚠️ 无法从该网页提取足够的内容来生成摘要。",
+        "summary_too_many_redirects": "⚠️ 该网址重定向次数过多，无法完成摘要。",
+        "summary_processing_error": "⚠️ 生成网页摘要失败：{error}",
+        "summary_result_header": "*网页摘要:*",
+        "summary_result_url": "• 网址: {url}",
+        "summary_result_title": "• 标题: {title}",
+        "summary_result_summary": "• 概要: {summary}",
+        "summary_result_bullets_header": "• 要点:",
+        "summary_result_bullet": "  - {item}",
+        "summary_result_warning": "• 说明: {warning}",
+        "summary_result_truncated": "• 说明: 网页内容较长，摘要基于截断后的页面文本生成。",
     },
     "en": {
         "empty_input": "Please enter the URL you want to access, e.g.: `google.com I need a proxy`",
@@ -87,7 +108,8 @@ MESSAGES = {
             "*Examples:*\n"
             "• `I want to access google.com, generate a proxy link`\n"
             "• `github.com need proxy, valid for 7 days`\n"
-            "• `Help me access this website https://example.com`"
+            "• `Help me access this website https://example.com`\n"
+            "• `/summary https://example.com` to get a webpage summary"
         ),
         # API Key commands
         "no_api_key": (
@@ -126,6 +148,26 @@ MESSAGES = {
         "mint_link_error": "Failed to generate link: {error}",
         # Google Maps upload
         "google_map_upload_failed": "⚠️ Google Maps upload failed: {error}",
+        # Web summary
+        "summary_usage": "Usage: `/summary <url>`",
+        "summary_url_required": "Please provide a website URL to summarize, e.g. `/summary https://example.com`",
+        "summary_single_url_only": "Please provide exactly one URL per summary request.",
+        "summary_disabled": "⚠️ Web summary is disabled. Please contact the admin.",
+        "summary_invalid_url": "⚠️ Invalid URL. Please provide a public http(s) website address.",
+        "summary_url_blocked": "⚠️ This URL cannot be accessed for security reasons. Please provide a public website.",
+        "summary_fetch_failed": "⚠️ Failed to fetch webpage content: {error}",
+        "summary_non_html": "⚠️ This URL did not return an HTML page, so summary is not supported.",
+        "summary_no_content": "⚠️ Unable to extract enough readable content from this page to summarize it.",
+        "summary_too_many_redirects": "⚠️ This URL redirected too many times and could not be summarized.",
+        "summary_processing_error": "⚠️ Failed to generate webpage summary: {error}",
+        "summary_result_header": "*Webpage Summary:*",
+        "summary_result_url": "• URL: {url}",
+        "summary_result_title": "• Title: {title}",
+        "summary_result_summary": "• Summary: {summary}",
+        "summary_result_bullets_header": "• Key points:",
+        "summary_result_bullet": "  - {item}",
+        "summary_result_warning": "• Note: {warning}",
+        "summary_result_truncated": "• Note: The page was long, so the summary used truncated content.",
     },
 }
 

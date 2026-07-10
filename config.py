@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     # QURL defaults
     qurl_default_expires_in: str = "30m"
 
+    # Slack web summary
+    web_summary_enabled: bool = True
+    web_summary_model: str = "claude-3-haiku-20240307"
+    web_summary_timeout_seconds: float = 15.0
+    web_summary_max_bytes: int = 750000
+    web_summary_max_chars: int = 12000
+    web_summary_max_redirects: int = 3
+
     # Encryption secret for storing user API keys
     encryption_secret: str = "slack-qurl-bot-default-secret"
 
