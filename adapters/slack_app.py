@@ -99,7 +99,7 @@ async def handle_summary_slack(ack, command, say, client):
     user_info = await _get_slack_user_info(client, user_id)
     lang = _preferred_lang(user_info, text)
     msg = await _build_summary_message(text, lang)
-    await say(f"<@{user_id}> {msg}")
+    await _say_without_unfurl(say, f"<@{user_id}> {msg}")
 
 
 # ============== Message Events ==============
@@ -169,6 +169,11 @@ def _format_summary_result(result: WebSummaryResult, lang: str) -> str:
     return "\n".join(parts)
 
 
+async def _say_without_unfurl(say, text: str) -> None:
+    """Post a Slack message without auto-expanding URL previews."""
+    await say(text=text, unfurl_links=False, unfurl_media=False)
+
+
 async def _build_summary_message(text: str, lang: str) -> str:
     urls = [
         url.rstrip(".,;:!?)]}，。！？；：")
@@ -221,6 +226,8 @@ async def handle_app_mention(event, say, client):
         elif cmd == "summary":
             lang = _preferred_lang(user_info, clean_text)
             msg = await _build_summary_message(arg, lang)
+            await _say_without_unfurl(say, f"<@{user}> {msg}")
+            return
         else:  # delkey
             msg, _ = await handle_delkey(user, PLATFORM_SLACK)
         await say(f"<@{user}> {msg}")
@@ -298,6 +305,8 @@ async def handle_direct_message(event, say, client):
         elif cmd == "summary":
             lang = _preferred_lang(user_info, clean_text)
             msg = await _build_summary_message(arg, lang)
+            await _say_without_unfurl(say, f"<@{user}> {msg}")
+            return
         else:
             msg, _ = await handle_delkey(user, PLATFORM_SLACK)
         await say(f"<@{user}> {msg}")
