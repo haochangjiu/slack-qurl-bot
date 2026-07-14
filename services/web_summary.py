@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from html import unescape
 from html.parser import HTMLParser
 
-import anthropic
 import httpx
+from openai import AsyncOpenAI
 
 from config import settings
 
@@ -223,8 +223,11 @@ class WebSummaryService:
     """Fetch, extract, and summarize a public web page."""
 
     def __init__(self):
-        self.client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-        self.model = settings.web_summary_model
+        self.client = AsyncOpenAI(
+            api_key=settings.atlascloud_api_key,
+            base_url=settings.atlascloud_base_url,
+        )
+        self.model = settings.ai_model
         self.max_bytes = settings.web_summary_max_bytes
         self.max_chars = settings.web_summary_max_chars
         self.max_redirects = settings.web_summary_max_redirects
@@ -244,11 +247,15 @@ class WebSummaryService:
             raise WebSummaryError("summary_no_content")
 
         try:
-            message = await self.client.messages.create(
+            completion = await self.client.chat.completions.create(
                 model=self.model,
                 max_tokens=700,
-                system=_SUMMARY_SYSTEM_PROMPT,
+                temperature=0,
                 messages=[
+                    {
+                        "role": "system",
+                        "content": _SUMMARY_SYSTEM_PROMPT,
+                    },
                     {
                         "role": "user",
                         "content": (
@@ -261,7 +268,7 @@ class WebSummaryService:
                     }
                 ],
             )
-            response_text = message.content[0].text if message.content else ""
+            response_text = completion.choices[0].message.content or ""
             data = self._extract_json(response_text)
             if data is None:
                 logger.error("Failed to parse summary JSON: %s", response_text)

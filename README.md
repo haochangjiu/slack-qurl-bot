@@ -6,6 +6,7 @@
 
 - 解析用户消息中的 URL
 - 识别用户意图（是否需要代理链接）
+- 通过 Atlas Cloud 中转 AI 分析用户请求与生成网页摘要
 - 调用 LayerV API 生成 QURL
 - Slack 支持 `/summary <url>` 获取网页摘要
 - 支持自定义过期时间
@@ -76,6 +77,11 @@ cp .env.example .env
 SLACK_BOT_TOKEN=xoxb-your-bot-token
 SLACK_APP_TOKEN=xapp-your-app-token
 
+# Atlas Cloud relay AI
+ATLASCLOUD_API_KEY=sk-your-atlascloud-api-key
+# ATLASCLOUD_BASE_URL=https://api.atlascloud.ai/v1
+# AI_MODEL=gpt-4o-mini
+
 # LayerV API (从 LayerV 获取)
 LAYERV_API_URL=https://api.layerv.xyz
 LAYERV_AUTH0_DOMAIN=your-domain.auth0.com
@@ -144,5 +150,6 @@ slack-qurl-bot/
 ## 注意事项
 
 - 需要有效的 LayerV API 凭证
+- 需要有效的 Atlas Cloud API Key，项目中的 AI 能力通过 OpenAI 兼容接口调用 `https://api.atlascloud.ai/v1`
 - Bot 使用 Socket Mode，无需公网 IP
 - 默认 QURL 有效期为 24 小时，可通过消息指定

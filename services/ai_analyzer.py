@@ -3,7 +3,7 @@ import logging
 import re
 from dataclasses import dataclass
 
-import anthropic
+from openai import AsyncOpenAI
 
 from config import settings
 from services.domain_resolver import domain_resolver
@@ -92,10 +92,13 @@ class AnalysisResult:
 
 
 class AIAnalyzer:
-    """Use Claude to analyze user messages."""
+    """Use an Atlas Cloud hosted LLM to analyze user messages."""
 
     def __init__(self):
-        self.client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        self.client = AsyncOpenAI(
+            api_key=settings.atlascloud_api_key,
+            base_url=settings.atlascloud_base_url,
+        )
 
     def _get_system_prompt(self) -> str:
         """Build system prompt with custom domain aliases."""
@@ -162,11 +165,15 @@ class AIAnalyzer:
         try:
             system_prompt = self._get_system_prompt()
 
-            message = self.client.messages.create(
-                model="claude-3-haiku-20240307",
+            completion = await self.client.chat.completions.create(
+                model=settings.ai_model,
                 max_tokens=500,
-                system=system_prompt,
+                temperature=0,
                 messages=[
+                    {
+                        "role": "system",
+                        "content": system_prompt,
+                    },
                     {
                         "role": "user",
                         "content": f"Analyze the following user message:\n\n{text}",
@@ -174,12 +181,12 @@ class AIAnalyzer:
                 ],
             )
 
-            response_text = message.content[0].text
-            logger.info(f"Claude raw response: {response_text}")
+            response_text = completion.choices[0].message.content or ""
+            logger.info("AI analyzer raw response: %s", response_text)
 
             data = self._extract_json(response_text)
             if data is None:
-                logger.error(f"Failed to extract JSON from Claude response: {response_text}")
+                logger.error("Failed to extract JSON from AI response: %s", response_text)
                 return AnalysisResult(
                     language="en", urls=[], wants_proxy=False, expires_in=None, reason=None
                 )
@@ -200,7 +207,7 @@ class AIAnalyzer:
             )
 
         except Exception as e:
-            logger.error(f"Claude API error: {e}")
+            logger.error("AI analyzer API error: %s", e)
             raise
 
 

@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Qurl Bot is a multi-platform chatbot (Slack + Discord) that generates secure, time-limited QURL proxy links on demand. When a user mentions `@qurl <url or website name>` in a channel or sends a direct message, the bot uses an LLM (Claude) to interpret the user's intent and extract the target URL, then calls LayerV's QURL API to generate a cryptographic access link. The proxy link is delivered via DM for privacy.
+Qurl Bot is a multi-platform chatbot (Slack + Discord) that generates secure, time-limited QURL proxy links on demand. When a user mentions `@qurl <url or website name>` in a channel or sends a direct message, the bot uses an Atlas Cloud hosted LLM to interpret the user's intent and extract the target URL, then calls LayerV's QURL API to generate a cryptographic access link. The proxy link is delivered via DM for privacy.
 
 **Key properties of a QURL:**
 - Identity-verified: only issued to confirmed workspace/server members
@@ -25,7 +25,7 @@ Qurl Bot is a multi-platform chatbot (Slack + Discord) that generates secure, ti
 |---|---|
 | **User** | Slack workspace member or Discord server member who requests a QURL via @mention or DM, in natural language |
 | **Qurl Bot** | Python application that handles the mention/DM, interprets the URL via LLM, and calls LayerV |
-| **LLM (Claude)** | Extracts well-formed URLs from the user's natural language message, detects language and intent |
+| **LLM (Atlas Cloud)** | Extracts well-formed URLs from the user's natural language message, detects language and intent |
 | **Slack API** | Used by the bot to receive events (Socket Mode), get user info (timezone, email), and send messages |
 | **Discord API** | Used by the bot to receive events (Gateway), send messages, and register slash commands |
 | **LayerV Backend** | Receives the QURL request, verifies the identity, and generates the secure link |
@@ -35,7 +35,7 @@ Qurl Bot is a multi-platform chatbot (Slack + Discord) that generates secure, ti
 #### Slack Flow
 
 ```
-User        Slack Adapter    Bot Core     LLM (Claude)   LayerV API
+User        Slack Adapter    Bot Core     LLM (Atlas)    LayerV API
  |               |              |              |              |
  |--@qurl msg--->|              |              |              |
  |               |--preprocess->|              |              |
@@ -52,7 +52,7 @@ User        Slack Adapter    Bot Core     LLM (Claude)   LayerV API
 #### Discord Flow
 
 ```
-User        Discord Adapter  Bot Core     LLM (Claude)   LayerV API
+User        Discord Adapter  Bot Core     LLM (Atlas)    LayerV API
  |               |              |              |              |
  |--@bot msg---->|              |              |              |
  |               |--preprocess->|              |              |
@@ -89,7 +89,7 @@ User        Bot              LLM         LayerV API     UserA      UserB
 
 ### 2.3 LLM Interpretation
 
-The bot passes the raw message text to Claude (claude-3-haiku) with a structured system prompt. The LLM returns a JSON object with:
+The bot passes the raw message text to an Atlas Cloud hosted LLM through its OpenAI-compatible API with a structured system prompt. The LLM returns a JSON object with:
 
 | Field | Type | Description |
 |---|---|---|
@@ -141,7 +141,7 @@ If either call fails, the QURL is not generated and a 401 is returned to the bot
 - **Frameworks:**
   - Slack: `slack-bolt` (async) with Socket Mode
   - Discord: `discord.py` with Gateway (Message Content Intent)
-- **LLM:** Anthropic Claude (claude-3-haiku-20240307) for natural language understanding
+- **LLM:** Atlas Cloud relay (`https://api.atlascloud.ai/v1`) using an OpenAI-compatible chat completion model for natural language understanding
 - **HTTP Client:** `httpx` (async) for LayerV API calls
 - **Configuration:** `pydantic-settings` with `.env` file
 - **Entry point:** `run.py` (unified, runs Slack and/or Discord based on configuration)
@@ -163,7 +163,7 @@ slack-qurl-bot/
 │   ├── slack_app.py          # Slack adapter (Bolt events & commands)
 │   └── discord_bot.py        # Discord adapter (discord.py events & commands)
 ├── services/
-│   ├── ai_analyzer.py        # Claude LLM integration for URL extraction
+│   ├── ai_analyzer.py        # Atlas Cloud LLM integration for URL extraction
 │   ├── layerv.py             # LayerV QURL API client
 │   ├── url_parser.py         # Regex-based URL extraction & normalization
 │   ├── time_utils.py         # Timezone conversion & time formatting
@@ -296,7 +296,7 @@ Content-Type: application/json
 | `SLACK_BOT_TOKEN` | Conditional | Bot OAuth token (`xoxb-...`), required for Slack |
 | `SLACK_APP_TOKEN` | Conditional | App-level token (`xapp-...`) for Socket Mode, required for Slack |
 | `DISCORD_TOKEN` | Conditional | Discord bot token, required for Discord |
-| `ANTHROPIC_API_KEY` | Yes | API key for Claude LLM (URL extraction & intent detection) |
+| `ATLASCLOUD_API_KEY` | Yes | API key for Atlas Cloud relay LLM access (URL extraction & intent detection) |
 | `LAYERV_API_URL` | No | LayerV API base URL (default: `https://api.layerv.xyz`) |
 | `LAYERV_API_KEY` | No | Global LayerV API key used by Slack (shared across all users) |
 | `LAYERV_STATS_URL` | No | QURL dashboard URL, returned when user asks for stats/dashboard |
@@ -343,7 +343,7 @@ In the Discord Developer Portal at https://discord.com/developers/applications:
 
 ### 6.1 AI Analyzer (`services/ai_analyzer.py`)
 
-Uses Claude (claude-3-haiku) to analyze user messages. The system prompt instructs the LLM to:
+Uses an Atlas Cloud hosted chat completion model to analyze user messages. The system prompt instructs the LLM to:
 
 - Detect language (English/Chinese)
 - Extract URLs from natural language, including website names (e.g., "Google" → `https://google.com`)

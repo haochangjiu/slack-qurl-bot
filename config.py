@@ -1,3 +1,4 @@
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -9,8 +10,22 @@ class Settings(BaseSettings):
     # Discord (optional - omit to run Slack-only)
     discord_token: str | None = None
 
-    # Claude API
-    anthropic_api_key: str
+    # Atlas Cloud (OpenAI-compatible relay for LLM providers)
+    atlascloud_api_key: str = Field(
+        validation_alias=AliasChoices(
+            "ATLASCLOUD_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+        )
+    )
+    atlascloud_base_url: str = Field(
+        default="https://api.atlascloud.ai/v1",
+        validation_alias=AliasChoices("ATLASCLOUD_BASE_URL", "OPENAI_BASE_URL"),
+    )
+    ai_model: str = Field(
+        default="gpt-4o-mini",
+        validation_alias=AliasChoices("AI_MODEL", "AI_ANALYZER_MODEL", "WEB_SUMMARY_MODEL"),
+    )
 
     # LayerV API
     layerv_api_url: str = "https://api.layerv.xyz"
@@ -22,7 +37,6 @@ class Settings(BaseSettings):
 
     # Slack web summary
     web_summary_enabled: bool = True
-    web_summary_model: str = "claude-3-haiku-20240307"
     web_summary_timeout_seconds: float = 15.0
     web_summary_max_bytes: int = 750000
     web_summary_max_chars: int = 12000

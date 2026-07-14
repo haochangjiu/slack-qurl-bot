@@ -3,13 +3,13 @@ import sys
 import types
 import unittest
 
-os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
+os.environ.setdefault("ATLASCLOUD_API_KEY", "test-key")
 
 try:
-    import anthropic  # noqa: F401
+    import openai  # noqa: F401
 except ModuleNotFoundError:
-    sys.modules["anthropic"] = types.SimpleNamespace(
-        AsyncAnthropic=lambda api_key: object(),
+    sys.modules["openai"] = types.SimpleNamespace(
+        AsyncOpenAI=lambda **kwargs: object(),
     )
 
 from services.web_summary import WebSummaryService, _is_blocked_host, normalize_summary_url
